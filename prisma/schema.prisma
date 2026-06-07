@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Conta de cliente da plataforma (multi-tenant).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  // Plano de assinatura: "free" | "starter" | "pro" | "enterprise"
+  tier         String   @default("free")
+  // Chave própria da Anthropic (BYOK). Se preenchida, é usada no lugar da chave da plataforma.
+  anthropicKey String?
+  // ID do cliente no Stripe (criado no primeiro checkout)
+  stripeCustomerId String?
+  createdAt    DateTime @default(now())
+
+  automations  Automation[]
+  sessions     Session[]
+  integrations Integration[]
+  records      Record[]
+  tasks        InternalTask[]
+  leads        Lead[]
+  apiKeys      ApiKey[]
+}
+
+// Credenciais de um serviço externo conectado pelo usuário (tokens criptografados).
+model Integration {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "smtp" | "resend" | "google_sheets" | "whatsapp" | "pipedrive" | "twilio" | "trello" | "asana"
+  provider  String
+  // JSON com as credenciais, criptografado (AES-256-GCM) antes de salvar.
+  dataEnc   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+// Sessão de login (token guardado em cookie httpOnly).
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Uma automação = um gatilho + uma lista de ações.
+model Automation {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String   @default("")
+  category    String   @default("geral")
+  // Como foi criada: "template" | "ai" | "manual"
+  source      String   @default("manual")
+  triggerJson String
+  actionsJson String
+  active      Boolean  @default(false)
+  // Agendamento (apenas para trigger.type = "schedule")
+  nextRunAt   DateTime?
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  executions Execution[]
+
+  @@index([userId])
+}
+
+// Registro de cada disparo da automação.
+model Execution {
+  id           String     @id @default(cuid())
+  automationId String
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  // "success" | "error" | "running"
+  status       String     @default("running")
+  inputJson    String     @default("{}")
+  logJson      String     @default("[]")
+  createdAt    DateTime   @default(now())
+
+  @@index([automationId])
+  @@index([createdAt])
+}
+
+// Registro salvo por uma automação (substitui planilha para usuários leigos).
+model Record {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automationId String?
+  // Nome da lista, ex: "Leads", "Agendamentos"
+  label        String   @default("Registros")
+  dataJson     String
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, label])
+}
+
+// Tarefa interna criada por uma automação (substitui CRM simples).
+model InternalTask {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automationId String?
+  title        String
+  // "open" | "done"
+  status       String   @default("open")
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, status])
+}
+
+// Contato/lead do mini CRM interno.
+model Lead {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String     @default("")
+  email        String?
+  phone        String?
+  company      String?
+  // "new" | "contacted" | "qualified" | "won" | "lost"
+  status       String     @default("new")
+  source       String?
+  automationId String?
+  dataJson     String     @default("{}")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  events       LeadEvent[]
+
+  @@index([userId])
+  @@index([userId, email])
+  @@index([userId, phone])
+  @@index([userId, status])
+}
+
+// Histórico de interações com um lead.
+model LeadEvent {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  // "created" | "updated" | "email_sent" | "sms_sent" | "whatsapp_sent" | "note" | "automation"
+  type         String
+  title        String
+  detail       String   @default("")
+  automationId String?
+  executionId  String?
+  metaJson     String   @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+// Chave de API para exportar o CRM externamente (Bearer token).
+model ApiKey {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String    @default("Chave padrão")
+  keyHash    String    @unique
+  keyPrefix  String
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  @@index([userId])
+}
