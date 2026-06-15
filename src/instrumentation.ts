@@ -32,5 +32,4 @@ export async function register() {
 
   setTimeout(tick, 5000);
   setInterval(tick, 60_000);
-  console.log("[cron] scheduler in-process ativo (a cada 60s)");
 }
