@@ -75,10 +75,12 @@ export function slugifyFieldKey(label: string): string {
 }
 
 export function uniqueFieldKey(label: string, existing: string[]): string {
-  let key = slugifyFieldKey(label);
+  const existingSet = new Set(existing);
+  const baseKey = slugifyFieldKey(label);
+  let key = baseKey;
   let n = 2;
-  while (existing.includes(key)) {
-    key = `${slugifyFieldKey(label)}_${n}`;
+  while (existingSet.has(key)) {
+    key = `${baseKey}_${n}`;
     n++;
   }
   return key;
