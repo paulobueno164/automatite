@@ -23,8 +23,7 @@ export async function register() {
         method: "POST",
         headers: secret ? { "x-cron-secret": secret } : {},
       });
-      const data = await res.json().catch(() => ({}));
-      if (data?.ran > 0) console.log(`[cron] executou ${data.ran} automação(ões) agendada(s)`);
+      await res.json().catch(() => ({}));
     } catch {
       // servidor pode ainda não estar pronto no primeiro tick — ignora
     }
