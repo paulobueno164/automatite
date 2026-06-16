@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAutomation, ExecutionLimitError } from "@/lib/engine";
+import { getCurrentUser } from "@/lib/auth";
 
 type Params = { params: { id: string } };
 
@@ -19,6 +20,14 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const result = await runAutomation(params.id, payload);
+
+    // Sentinel Protection: Filter steps if requester is not the owner (prevents secrets leakage).
+    const user = await getCurrentUser();
+    if (user?.id !== result.userId) {
+      const { steps, ...safeResult } = result;
+      return NextResponse.json(safeResult);
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ExecutionLimitError) {

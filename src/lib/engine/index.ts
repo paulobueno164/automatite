@@ -21,7 +21,7 @@ export class ExecutionLimitError extends Error {
 export async function runAutomation(
   automationId: string,
   payload: Record<string, unknown>
-): Promise<{ executionId: string; status: string; steps: ExecutionStep[] }> {
+): Promise<{ executionId: string; status: string; steps: ExecutionStep[]; userId: string }> {
   const automation = await prisma.automation.findUnique({
     where: { id: automationId },
     include: { user: true },
@@ -76,7 +76,7 @@ export async function runAutomation(
     data: { status, logJson: JSON.stringify(steps) },
   });
 
-  return { executionId: execution.id, status, steps };
+  return { executionId: execution.id, status, steps, userId: automation.userId };
 }
 
 /**
