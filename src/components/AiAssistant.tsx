@@ -237,7 +237,7 @@ export function AiAssistant() {
         onClick={() => setOpen(!open)}
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-2xl text-white shadow-lg transition hover:bg-brand-700 hover:shadow-xl"
         title="Assistente IA"
-        aria-label="Abrir assistente IA"
+        aria-label={open ? "Fechar assistente IA" : "Abrir assistente IA"}
       >
         {open ? "✕" : "💬"}
       </button>
