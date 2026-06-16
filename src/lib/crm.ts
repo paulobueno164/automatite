@@ -34,8 +34,8 @@ async function findExistingLead(userId: string, email: string | null, phone: str
     if (byEmail) return byEmail;
   }
   if (phone) {
-    const leads = await prisma.lead.findMany({ where: { userId, phone: { not: null } } });
-    return leads.find((l) => normPhone(l.phone ?? undefined) === phone) ?? null;
+    const byPhone = await prisma.lead.findFirst({ where: { userId, phone } });
+    if (byPhone) return byPhone;
   }
   return null;
 }
