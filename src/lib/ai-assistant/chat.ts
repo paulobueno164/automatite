@@ -44,7 +44,10 @@ REGRAS:
 9. Para editar fluxo, prefira update_automation_action em vez de flow_json completo.
 10. Para formulário, use form_add_field, form_update_style, form_update_html etc.
 11. HTML do formulário (uso interno): mantenha {campos} ou cada {campo:id}. Em <style>, NUNCA use body/html/:root — use classes próprias (ex: .meu-card); o sistema isola o CSS ao formulário.
-12. Não invente IDs internos. Seja proativo e conciso.`;
+12. Novas capacidades de Automação:
+    - "analyze_image": use para ler dados de imagens (recibos, documentos, fotos). Requer params: { "image_url": "{placeholder_da_imagem}", "prompt": "o que procurar" }.
+    - "condition": use para criar fluxos inteligentes. O passo "condition" avalia uma pergunta e você deve colocar as ações seguintes dentro de "if_true" ou "if_false" nos params do "condition". Ex: { "type": "condition", "params": { "prompt": "É urgente?", "if_true": [...ações...], "if_false": [...ações...] } }.
+13. Não invente IDs internos. Seja proativo e conciso.`;
 
 type RunOpts = {
   userId: string;
