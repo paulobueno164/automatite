@@ -11,6 +11,7 @@ function createPrisma() {
 function getPrisma(): PrismaClient {
   const cached = globalForPrisma.prisma;
   if (cached && "lead" in cached && "apiKey" in cached) return cached;
+  // @ts-ignore - cached is checked to exists
   if (cached) void cached.$disconnect().catch(() => {});
   const client = createPrisma();
   if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = client;

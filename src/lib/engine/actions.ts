@@ -15,7 +15,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 
-type Context = {
+export type EngineContext = {
   data: Record<string, unknown>;
   userId: string;
   automationId: string;
@@ -25,7 +25,7 @@ type Context = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: Context): unknown {
+function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
       const v = ctx.data[key];
@@ -46,7 +46,7 @@ function interpolate(value: unknown, ctx: Context): unknown {
  * Cada ação tenta a integração real quando há credencial conectada; senão,
  * cai em modo mock (registra no log sem chamar o serviço externo).
  */
-export async function runAction(action: Action, ctx: Context): Promise<ExecutionStep> {
+export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
   const integ = ctx.integrations;
@@ -226,7 +226,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
         }
         const client = new Anthropic({ apiKey: ctx.apiKey });
         const resp = await client.messages.create({
-          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
           max_tokens: 600,
           messages: [{ role: "user", content: prompt }],
         });
@@ -236,6 +236,77 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
           .join("");
         ctx.data.ai_output = out;
         return ok(action, label, "Texto gerado pela IA", { ai_output: out });
+      }
+
+      case "analyze_image": {
+        const imageUrl = String(params.image_url ?? "");
+        const prompt = String(params.prompt ?? "O que tem nesta imagem?");
+        if (!imageUrl) return fail(action, label, "URL da imagem ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const imageRes = await fetch(imageUrl);
+        if (!imageRes.ok) return fail(action, label, `Erro ao baixar imagem: ${imageRes.statusText}`);
+        const buffer = await imageRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        const contentType = imageRes.headers.get("content-type") || "image/jpeg";
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: contentType.includes("png") ? "image/png" : contentType.includes("gif") ? "image/gif" : contentType.includes("webp") ? "image/webp" : "image/jpeg",
+                    data: base64,
+                  },
+                },
+                { type: "text", text: prompt },
+              ],
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+        ctx.data.image_analysis = out;
+        return ok(action, label, "Imagem analisada pela IA", { image_analysis: out });
+      }
+
+      case "condition": {
+        const prompt = String(params.prompt ?? "");
+        if (!prompt) return fail(action, label, "Pergunta (prompt) ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 50,
+          messages: [
+            {
+              role: "user",
+              content: `Responda apenas SIM ou NÃO (e uma breve justificativa opcional após) para a pergunta baseada nos dados fornecidos.\n\nDados: ${JSON.stringify(
+                ctx.data
+              )}\n\nPergunta: ${prompt}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        const result = out.toUpperCase().includes("SIM");
+        return ok(action, label, `Condição avaliada como ${result ? "SIM" : "NÃO"}: ${out}`, {
+          condition_result: result,
+          reason: out,
+        });
       }
 
       default:
