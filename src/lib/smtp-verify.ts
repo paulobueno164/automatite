@@ -95,11 +95,10 @@ export function formatSmtpError(err: unknown, preset?: string): SmtpVerifyResult
     };
   }
 
-  const raw = (err as Error)?.message;
   return {
     ok: false,
     message: "Não foi possível validar o e-mail com essas configurações.",
-    hint: raw ? `Detalhe técnico: ${raw}` : "Revise servidor, porta, SSL, e-mail e senha de app.",
+    hint: "Revise servidor, porta, SSL, e-mail e senha de app.",
   };
 }
 
