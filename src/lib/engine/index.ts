@@ -4,7 +4,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction } from "./actions";
+import { runAction, EngineContext } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -63,11 +63,7 @@ export async function runAutomation(
     integrations: await loadUserIntegrations(automation.userId),
   };
   const steps: ExecutionStep[] = [];
-
-  for (const action of actions) {
-    const step = await runAction(action, ctx);
-    steps.push(step);
-  }
+  await runActionSequence(actions, ctx, steps);
 
   const status = steps.some((s) => s.status === "error") ? "error" : "success";
 
@@ -77,6 +73,34 @@ export async function runAutomation(
   });
 
   return { executionId: execution.id, status, steps, userId: automation.userId };
+}
+
+/**
+ * Executa uma sequência de ações de forma recursiva (suporta branching).
+ */
+async function runActionSequence(
+  actions: Action[],
+  ctx: EngineContext,
+  steps: ExecutionStep[]
+): Promise<void> {
+  for (const action of actions) {
+    const step = await runAction(action, ctx);
+    steps.push(step);
+
+    // Se for uma condição e tiver ramos, executa o ramo correspondente.
+    if (action.type === "condition" && step.status === "success") {
+      const result = (step.output as any)?.condition_result === true;
+      const branchKey = result ? "if_true" : "if_false";
+      const branchActions = action.params?.[branchKey];
+
+      if (Array.isArray(branchActions) && branchActions.length > 0) {
+        await runActionSequence(branchActions, ctx, steps);
+      }
+    }
+
+    // Se a ação falhou, poderíamos interromper o fluxo aqui ou continuar.
+    // O Automatite hoje continua, então mantemos a consistência.
+  }
 }
 
 /**

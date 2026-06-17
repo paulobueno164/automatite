@@ -23,8 +23,7 @@ export async function register() {
         method: "POST",
         headers: secret ? { "x-cron-secret": secret } : {},
       });
-      const data = await res.json().catch(() => ({}));
-      if (data?.ran > 0) console.log(`[cron] executou ${data.ran} automação(ões) agendada(s)`);
+      await res.json().catch(() => ({}));
     } catch {
       // servidor pode ainda não estar pronto no primeiro tick — ignora
     }
@@ -32,5 +31,4 @@ export async function register() {
 
   setTimeout(tick, 5000);
   setInterval(tick, 60_000);
-  console.log("[cron] scheduler in-process ativo (a cada 60s)");
 }
