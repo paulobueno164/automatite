@@ -27,6 +27,7 @@ export default async function CrmPage({ searchParams }: { searchParams: { status
   });
 
   const counts = await prisma.lead.groupBy({ by: ["status"], where: { userId: user.id }, _count: true });
+  const countsMap = Object.fromEntries(counts.map((c) => [c.status, c._count]));
 
   return (
     <div className="space-y-6">
@@ -48,7 +49,7 @@ export default async function CrmPage({ searchParams }: { searchParams: { status
           Todos ({counts.reduce((s, c) => s + c._count, 0)})
         </Link>
         {LEAD_STATUSES.map((s) => {
-          const n = counts.find((c) => c.status === s.value)?._count ?? 0;
+          const n = countsMap[s.value] ?? 0;
           return (
             <Link
               key={s.value}

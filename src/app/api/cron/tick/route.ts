@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runDueSchedules } from "@/lib/engine";
+import crypto from "crypto";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,23 @@ async function handle(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret) {
     const provided = req.headers.get("x-cron-secret") ?? req.nextUrl.searchParams.get("secret");
-    if (provided !== secret) {
+
+    if (!provided) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
+    const bufSecret = Buffer.from(secret);
+    const bufProvided = Buffer.from(provided);
+
+    // Validate length and compare safely to prevent timing attacks
+    let isMatch = true;
+    if (bufSecret.length !== bufProvided.length) {
+      isMatch = false;
+    }
+
+    const compareBuf = bufSecret.length === bufProvided.length ? bufProvided : bufSecret;
+
+    if (!crypto.timingSafeEqual(bufSecret, compareBuf) || !isMatch) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
   }
