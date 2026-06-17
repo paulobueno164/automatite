@@ -54,13 +54,19 @@ export async function runAutomation(
     payload,
   });
 
+  let cachedIntegrations: Record<string, any> | null = null;
   const ctx = {
     data: { ...payload },
     userId: automation.userId,
     automationId,
     executionId: execution.id,
     apiKey: resolveApiKey(automation.user.anthropicKey),
-    integrations: await loadUserIntegrations(automation.userId),
+    getIntegrations: async () => {
+      if (!cachedIntegrations) {
+        cachedIntegrations = await loadUserIntegrations(automation.userId);
+      }
+      return cachedIntegrations;
+    },
   };
   const steps: ExecutionStep[] = [];
   await runActionSequence(actions, ctx, steps);
