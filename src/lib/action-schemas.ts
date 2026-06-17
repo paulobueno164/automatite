@@ -144,6 +144,13 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "anthropic",
   },
+  send_slack: {
+    fields: [
+      { key: "channel", label: "Canal", type: "text", placeholder: "#geral", hint: "Nome ou ID do canal (opcional se configurou o padrão)." },
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead recebido: {nome}" },
+    ],
+    resolveProvider: () => "slack",
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -161,6 +168,7 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   ai_generate: { prompt: "" },
   analyze_image: { image_url: "", prompt: "" },
   condition: { prompt: "" },
+  send_slack: { channel: "", text: "" },
   log: { message: "" },
 };
 

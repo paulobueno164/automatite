@@ -27,6 +27,7 @@ export const ActionTypeEnum = z.enum([
   "ai_generate", // gera texto com a IA (ex.: resposta personalizada)
   "analyze_image", // analisa uma imagem com IA (Visão)
   "condition", // ramificação condicional inteligente com IA
+  "send_slack", // envia notificação no Slack
   "log", // apenas registra uma mensagem
 ]);
 
@@ -71,5 +72,6 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   ai_generate: { title: "Gerar com IA", description: "Usa a IA para gerar um texto (ex.: resposta personalizada)." },
   analyze_image: { title: "Analisar imagem", description: "Usa a visão da IA para extrair dados ou descrever uma imagem." },
   condition: { title: "Condição (IA)", description: "Decide qual caminho seguir baseado em uma pergunta para a IA." },
+  send_slack: { title: "Enviar Slack", description: "Envia uma notificação para um canal do Slack." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },
 };
