@@ -10,6 +10,7 @@ import {
   trelloCreateCard,
   twilioSendSms,
   whatsappSend,
+  slackSendNotification,
 } from "../providers";
 import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
@@ -122,6 +123,13 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           automationId: ctx.automationId,
           executionId: ctx.executionId,
         });
+        return ok(action, label, r.detail, r.output);
+      }
+
+      case "send_slack": {
+        const creds = integ.slack;
+        if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
+        const r = await slackSendNotification(creds, params);
         return ok(action, label, r.detail, r.output);
       }
 

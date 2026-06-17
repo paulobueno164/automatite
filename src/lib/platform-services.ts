@@ -48,6 +48,7 @@ export const EXTERNAL_PROVIDER_IDS = [
   "twilio",
   "trello",
   "asana",
+  "slack",
 ] as const;
 
 export function isPlatformEmailReady(): boolean {
