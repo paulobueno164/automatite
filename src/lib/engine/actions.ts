@@ -21,7 +21,7 @@ export type EngineContext = {
   automationId: string;
   executionId: string;
   apiKey?: string;
-  integrations: Record<string, Credentials>;
+  getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
@@ -49,7 +49,6 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
 export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
-  const integ = ctx.integrations;
 
   try {
     switch (action.type) {
@@ -61,6 +60,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         const subject = String(params.subject ?? "");
         if (!to) return fail(action, label, "Destinatário ausente");
 
+        const integ = await ctx.getIntegrations();
         if (integ.smtp?.host && integ.smtp?.user && integ.smtp?.password) {
           const r = await smtpSendEmail(integ.smtp, params);
           await logLeadActivityByContact({
@@ -102,6 +102,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "send_sms": {
+        const integ = await ctx.getIntegrations();
         const creds =
           integ.twilio ??
           (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
@@ -126,6 +127,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "send_whatsapp": {
+        const integ = await ctx.getIntegrations();
         const creds = integ.whatsapp;
         if (!creds) return fail(action, label, "WhatsApp não conectado — configure em Configurações → Integrações");
         const r = await whatsappSend(creds, params);
@@ -153,6 +155,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           });
           return ok(action, label, `Salvo em Registros → ${sheetLabel}`, r);
         }
+        const integ = await ctx.getIntegrations();
         const creds = integ.google_sheets;
         if (!creds) return fail(action, label, "Google Sheets não conectado — use Registros (Automatite) ou conecte em Configurações");
         const r = await googleSheetsAppend(creds, params, ctx.data);
@@ -188,6 +191,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           const r = await createInternalTask({ userId: ctx.userId, automationId: ctx.automationId, title });
           return ok(action, label, `Tarefa criada: "${r.title}"`, r);
         }
+        const integ = await ctx.getIntegrations();
         if (app.includes("pipedrive")) {
           if (!integ.pipedrive) return fail(action, label, "Pipedrive não conectado — configure em Configurações → Integrações");
           const r = await pipedriveCreateTask(integ.pipedrive, params);
