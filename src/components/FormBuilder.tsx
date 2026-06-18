@@ -148,7 +148,13 @@ export function FormBuilder({
               <div key={field.id} className="rounded-lg border border-slate-200 bg-slate-50/50 p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium text-slate-400">#{i + 1}</span>
-                  <button type="button" onClick={() => moveField(i, -1)} className="btn-ghost px-2 py-0.5 text-xs" disabled={i === 0}>
+                  <button
+                    type="button"
+                    onClick={() => moveField(i, -1)}
+                    className="btn-ghost px-2 py-0.5 text-xs"
+                    disabled={i === 0}
+                    aria-label="Mover para cima"
+                  >
                     ↑
                   </button>
                   <button
@@ -156,6 +162,7 @@ export function FormBuilder({
                     onClick={() => moveField(i, 1)}
                     className="btn-ghost px-2 py-0.5 text-xs"
                     disabled={i === config.fields.length - 1}
+                    aria-label="Mover para baixo"
                   >
                     ↓
                   </button>
