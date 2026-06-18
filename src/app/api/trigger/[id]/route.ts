@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { runAutomation, ExecutionLimitError } from "@/lib/engine";
+import { getCurrentUser } from "@/lib/auth";
 
 type Params = { params: { id: string } };
 
@@ -19,6 +20,13 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const result = await runAutomation(params.id, payload);
+    const user = await getCurrentUser();
+
+    // Se quem chamou não for o dono, omite detalhes sensíveis (steps).
+    if (user?.id !== result.userId) {
+      delete (result as any).steps;
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ExecutionLimitError) {

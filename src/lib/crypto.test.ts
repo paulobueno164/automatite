@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { encrypt, decrypt } from "./crypto";
+import { encrypt, decrypt, encryptJson, decryptJson } from "./crypto";
 import { randomBytes } from "crypto";
 
 describe("crypto utils", () => {
@@ -75,6 +75,42 @@ describe("crypto utils", () => {
       const tamperedPayload = parts.join(".");
 
       expect(() => decrypt(tamperedPayload)).toThrow();
+    });
+
+    it("encrypt and decrypt with special characters", () => {
+      const plain = "hello 🌍 and 🚀! #123";
+      const encrypted = encrypt(plain);
+      const decrypted = decrypt(encrypted);
+      expect(decrypted).toBe(plain);
+    });
+
+    it("encrypt generates different ciphertexts for the same plaintext (due to random IV)", () => {
+      const plain = "hello world";
+      const encrypted1 = encrypt(plain);
+      const encrypted2 = encrypt(plain);
+      expect(encrypted1).not.toBe(encrypted2);
+    });
+
+    it("decrypt throws on tampered auth tag", () => {
+      const plain = "secret message";
+      const encrypted = encrypt(plain);
+      const parts = encrypted.split(".");
+
+      // Modify the auth tag
+      const tamperedTag = Buffer.from(parts[1], "base64");
+      tamperedTag[0] ^= 1;
+      parts[1] = tamperedTag.toString("base64");
+
+      const tamperedPayload = parts.join(".");
+
+      expect(() => decrypt(tamperedPayload)).toThrow();
+    });
+
+    it("encryptJson and decryptJson work together", () => {
+      const obj = { key: "value", num: 42, bool: true, nested: { test: "data" } };
+      const encrypted = encryptJson(obj);
+      const decrypted = decryptJson(encrypted);
+      expect(decrypted).toEqual(obj);
     });
   });
 });

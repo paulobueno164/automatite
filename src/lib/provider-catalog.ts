@@ -9,7 +9,8 @@ export type ProviderId =
   | "pipedrive"
   | "twilio"
   | "trello"
-  | "asana";
+  | "asana"
+  | "slack";
 
 export type ProviderField = {
   key: string;
@@ -122,6 +123,17 @@ export const PROVIDERS: ProviderDef[] = [
     fields: [
       { key: "accessToken", label: "Personal Access Token", type: "password" },
       { key: "defaultProjectId", label: "ID do projeto (padrão)", type: "text", optional: true },
+    ],
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    emoji: "💬",
+    handles: ["send_slack"],
+    docs: "https://api.slack.com/messaging/sending",
+    fields: [
+      { key: "botToken", label: "Bot User OAuth Token", type: "password", placeholder: "xoxb-..." },
+      { key: "defaultChannel", label: "Canal padrão", type: "text", optional: true, placeholder: "#geral" },
     ],
   },
 ];
