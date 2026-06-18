@@ -25,6 +25,8 @@ export const ActionTypeEnum = z.enum([
   "append_sheet", // adiciona linha em planilha Google Sheets
   "http_request", // chamada HTTP real (webhook genérico de saída)
   "ai_generate", // gera texto com a IA (ex.: resposta personalizada)
+  "analyze_image", // analisa uma imagem com IA (Visão)
+  "condition", // ramificação condicional inteligente com IA
   "log", // apenas registra uma mensagem
 ]);
 
@@ -67,5 +69,7 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   append_sheet: { title: "Salvar registro", description: "Salva os dados em Registros (Automatite) ou no Google Sheets." },
   http_request: { title: "Chamada HTTP", description: "Faz uma requisição HTTP para um endpoint externo." },
   ai_generate: { title: "Gerar com IA", description: "Usa a IA para gerar um texto (ex.: resposta personalizada)." },
+  analyze_image: { title: "Analisar imagem", description: "Usa a visão da IA para extrair dados ou descrever uma imagem." },
+  condition: { title: "Condição (IA)", description: "Decide qual caminho seguir baseado em uma pergunta para a IA." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },
 };
