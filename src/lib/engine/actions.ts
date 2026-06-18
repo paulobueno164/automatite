@@ -6,6 +6,7 @@ import {
   asanaCreateTask,
   googleSheetsAppend,
   pipedriveCreateTask,
+  slackSend,
   smtpSendEmail,
   trelloCreateCard,
   twilioSendSms,
@@ -21,7 +22,8 @@ export type EngineContext = {
   automationId: string;
   executionId: string;
   apiKey?: string;
-  integrations: Record<string, Credentials>;
+  /** Lazy loader for user integrations to avoid unnecessary DB queries and decryption. */
+  getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
@@ -49,18 +51,24 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
 export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
-  const integ = ctx.integrations;
 
   try {
     switch (action.type) {
       case "log":
         return ok(action, label, String(params.message ?? "(sem mensagem)"));
 
+      case "delay": {
+        const seconds = Math.min(Number(params.seconds ?? 5), 60); // Máximo 60s para evitar timeout do worker
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        return ok(action, label, `Aguardou ${seconds} segundos`);
+      }
+
       case "send_email": {
         const to = String(params.to ?? "");
         const subject = String(params.subject ?? "");
         if (!to) return fail(action, label, "Destinatário ausente");
 
+        const integ = await ctx.getIntegrations();
         if (integ.smtp?.host && integ.smtp?.user && integ.smtp?.password) {
           const r = await smtpSendEmail(integ.smtp, params);
           await logLeadActivityByContact({
@@ -102,6 +110,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "send_sms": {
+        const integ = await ctx.getIntegrations();
         const creds =
           integ.twilio ??
           (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
@@ -125,7 +134,15 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         return ok(action, label, r.detail, r.output);
       }
 
+      case "send_slack": {
+        const creds = integ.slack;
+        if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
+        const r = await slackSend(creds, params);
+        return ok(action, label, r.detail, r.output);
+      }
+
       case "send_whatsapp": {
+        const integ = await ctx.getIntegrations();
         const creds = integ.whatsapp;
         if (!creds) return fail(action, label, "WhatsApp não conectado — configure em Configurações → Integrações");
         const r = await whatsappSend(creds, params);
@@ -153,6 +170,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           });
           return ok(action, label, `Salvo em Registros → ${sheetLabel}`, r);
         }
+        const integ = await ctx.getIntegrations();
         const creds = integ.google_sheets;
         if (!creds) return fail(action, label, "Google Sheets não conectado — use Registros (Automatite) ou conecte em Configurações");
         const r = await googleSheetsAppend(creds, params, ctx.data);
@@ -188,6 +206,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           const r = await createInternalTask({ userId: ctx.userId, automationId: ctx.automationId, title });
           return ok(action, label, `Tarefa criada: "${r.title}"`, r);
         }
+        const integ = await ctx.getIntegrations();
         if (app.includes("pipedrive")) {
           if (!integ.pipedrive) return fail(action, label, "Pipedrive não conectado — configure em Configurações → Integrações");
           const r = await pipedriveCreateTask(integ.pipedrive, params);
@@ -307,6 +326,33 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           condition_result: result,
           reason: out,
         });
+      }
+
+      case "transform": {
+        const instruction = String(params.instruction ?? "");
+        if (!instruction) return fail(action, label, "Instrução de transformação ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: `Transforme os dados fornecidos seguindo exatamente esta instrução: ${instruction}\n\nRetorne APENAS o resultado final da transformação, sem explicações.\n\nDados: ${JSON.stringify(
+                ctx.data
+              )}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        ctx.data.transformed_output = out;
+        return ok(action, label, "Dados transformados pela IA", { transformed_output: out });
       }
 
       default:

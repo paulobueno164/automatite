@@ -20,9 +20,9 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   try {
     const result = await runAutomation(params.id, payload);
+    const user = await getCurrentUser();
 
     // Sentinel Protection: Filter steps if requester is not the owner (prevents secrets leakage).
-    const user = await getCurrentUser();
     if (user?.id !== result.userId) {
       const { steps, ...safeResult } = result;
       return NextResponse.json(safeResult);

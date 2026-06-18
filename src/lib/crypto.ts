@@ -10,6 +10,9 @@ function getKey(): Buffer {
   if (hex && /^[0-9a-fA-F]{64}$/.test(hex)) {
     return Buffer.from(hex, "hex");
   }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ENCRYPTION_KEY critical failure: Not configured or invalid in production.");
+  }
   // Fallback de desenvolvimento (inseguro). Mantém o app funcional sem configurar a chave.
   return createHash("sha256").update("automatite-dev-fallback-key").digest();
 }
