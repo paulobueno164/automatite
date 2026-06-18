@@ -32,7 +32,7 @@ export function AutomationActions({
   const [active, setActive] = useState(initialActive);
   const [busy, setBusy] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedType, setCopiedType] = useState<"form" | "webhook" | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const missing = readiness.items.filter((i) => i.status === "missing");
@@ -63,11 +63,11 @@ export function AutomationActions({
     router.push("/");
   }
 
-  async function copyLink() {
+  async function handleCopy(text: string, type: "form" | "webhook") {
     try {
-      await navigator.clipboard.writeText(formUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedType(type);
+      setTimeout(() => setCopiedType(null), 2000);
     } catch {
       setTestError("Não foi possível copiar. Selecione o link manualmente.");
     }
@@ -104,8 +104,12 @@ export function AutomationActions({
 
             <div className="flex flex-wrap gap-2">
               <code className="flex-1 overflow-x-auto rounded bg-white px-3 py-2 text-xs text-slate-700">{formUrl}</code>
-              <button onClick={copyLink} className="btn-ghost shrink-0 text-sm">
-                {copied ? "Copiado!" : "Copiar link"}
+              <button
+                onClick={() => handleCopy(formUrl, "form")}
+                className="btn-ghost shrink-0 text-sm"
+                aria-label="Copiar link do formulário"
+              >
+                {copiedType === "form" ? "Copiado!" : "Copiar link"}
               </button>
             </div>
 
@@ -170,7 +174,18 @@ export function AutomationActions({
         {showAdvanced && (
           <div className="mt-3 space-y-2 border-t border-slate-100 pt-3">
             <p className="text-xs text-slate-500">POST com JSON nesta URL (para sites ou sistemas externos):</p>
-            <code className="block overflow-x-auto rounded bg-slate-50 p-2 text-xs">{webhookUrl}</code>
+            <div className="flex items-center gap-2">
+              <code className="block flex-1 overflow-x-auto rounded bg-slate-50 p-2 text-xs text-slate-700">
+                {webhookUrl}
+              </code>
+              <button
+                onClick={() => handleCopy(webhookUrl, "webhook")}
+                className="btn-ghost shrink-0 px-3 py-1.5 text-xs"
+                aria-label="Copiar URL do webhook"
+              >
+                {copiedType === "webhook" ? "Copiado!" : "Copiar"}
+              </button>
+            </div>
           </div>
         )}
       </div>
