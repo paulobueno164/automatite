@@ -131,6 +131,37 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "anthropic",
   },
+  analyze_image: {
+    fields: [
+      { key: "image_url", label: "URL da imagem", type: "url", placeholder: "{url_da_imagem}", hint: "URL pública da imagem ou placeholder do gatilho." },
+      { key: "prompt", label: "O que extrair?", type: "textarea", placeholder: "Extraia o valor total e a data deste recibo.", hint: "Instrução para a IA sobre o que procurar na imagem." },
+    ],
+    resolveProvider: () => "anthropic",
+  },
+  condition: {
+    fields: [
+      { key: "prompt", label: "Pergunta para a IA", type: "textarea", placeholder: "O cliente parece interessado em comprar agora?", hint: "A IA responderá SIM ou NÃO para decidir o caminho." },
+    ],
+    resolveProvider: () => "anthropic",
+  },
+  delay: {
+    fields: [
+      { key: "seconds", label: "Segundos", type: "text", placeholder: "10", hint: "Máximo 60 segundos." },
+    ],
+  },
+  send_slack: {
+    fields: [
+      { key: "channel", label: "Canal", type: "text", placeholder: "#geral", hint: "Nome do canal (ex: #vendas) ou ID." },
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead: {nome}" },
+    ],
+    resolveProvider: () => "slack",
+  },
+  transform: {
+    fields: [
+      { key: "instruction", label: "Instrução de transformação", type: "textarea", placeholder: "Extraia apenas o primeiro nome em letras maiúsculas", hint: "O resultado ficará disponível na variável {transformed_output}." },
+    ],
+    resolveProvider: () => "anthropic",
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -146,6 +177,11 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   append_sheet: { app: "automatite", sheet: "Dados" },
   http_request: { url: "", method: "POST" },
   ai_generate: { prompt: "" },
+  analyze_image: { image_url: "", prompt: "" },
+  condition: { prompt: "" },
+  delay: { seconds: "5" },
+  send_slack: { channel: "", text: "" },
+  transform: { instruction: "" },
   log: { message: "" },
 };
 

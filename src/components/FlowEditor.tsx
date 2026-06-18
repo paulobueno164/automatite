@@ -200,23 +200,41 @@ export function FlowEditor({
             className={`card scroll-mt-24 space-y-4 ${dragIndex === ai ? "opacity-50" : ""}`}
           >
             <div className="flex items-center gap-2">
-              <span className="cursor-grab text-slate-400" title="Arraste para reordenar">
+              <span
+                className="cursor-grab text-slate-400"
+                title="Arraste para reordenar"
+                aria-hidden="true"
+              >
                 ⠿
               </span>
               <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
                 {ai + 1}
               </span>
-              <select className="input flex-1" value={action.type} onChange={(e) => changeActionType(ai, e.target.value as ActionType)}>
+              <select
+                className="input flex-1"
+                value={action.type}
+                onChange={(e) => changeActionType(ai, e.target.value as ActionType)}
+              >
                 {ACTION_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {ACTION_CATALOG[t].title}
                   </option>
                 ))}
               </select>
-              <button onClick={() => move(ai, ai - 1)} className="btn-ghost px-2 py-1" title="Subir">
+              <button
+                onClick={() => move(ai, ai - 1)}
+                className="btn-ghost px-2 py-1"
+                title="Subir"
+                aria-label="Mover para cima"
+              >
                 ↑
               </button>
-              <button onClick={() => move(ai, ai + 1)} className="btn-ghost px-2 py-1" title="Descer">
+              <button
+                onClick={() => move(ai, ai + 1)}
+                className="btn-ghost px-2 py-1"
+                title="Descer"
+                aria-label="Mover para baixo"
+              >
                 ↓
               </button>
               <button onClick={() => removeAction(ai)} className="px-2 py-1 text-sm text-red-600 hover:underline">

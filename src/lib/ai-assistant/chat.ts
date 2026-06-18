@@ -44,7 +44,17 @@ REGRAS:
 9. Para editar fluxo, prefira update_automation_action em vez de flow_json completo.
 10. Para formulário, use form_add_field, form_update_style, form_update_html etc.
 11. HTML do formulário (uso interno): mantenha {campos} ou cada {campo:id}. Em <style>, NUNCA use body/html/:root — use classes próprias (ex: .meu-card); o sistema isola o CSS ao formulário.
-12. Não invente IDs internos. Seja proativo e conciso.`;
+12. Novas capacidades de Automação:
+    - "analyze_image": use para ler dados de imagens (recibos, documentos, fotos). Requer params: { "image_url": "{placeholder_da_imagem}", "prompt": "o que procurar" }.
+    - "condition": use para criar fluxos inteligentes. O passo "condition" avalia uma pergunta e você deve colocar as ações seguintes dentro de "if_true" ou "if_false" nos params do "condition". Ex: { "type": "condition", "params": { "prompt": "É urgente?", "if_true": [...ações...], "if_false": [...ações...] } }.
+  - "delay": use para pausar o fluxo por alguns segundos. Params: { "seconds": 10 }. Máximo 60.
+  - "send_slack": use para enviar notificações para o Slack. Params: { "channel": "#vendas", "text": "Novo lead: {nome}" }.
+  - "transform": use para limpar, formatar ou extrair dados usando IA. Params: { "instruction": "Extraia apenas o primeiro nome em letras maiúsculas" }. O resultado fica em {transformed_output}.
+13. VISUALIZAÇÃO DE FLUXO: Ao criar ou explicar uma automação, SEMPRE gere um diagrama Mermaid simples no final da sua resposta para ajudar o usuário a visualizar o caminho. Use o formato:
+    graph TD
+      A[Gatilho] --> B[Ação 1]
+      B --> C[Ação 2]
+14. Não invente IDs internos. Seja proativo e conciso.`;
 
 type RunOpts = {
   userId: string;
