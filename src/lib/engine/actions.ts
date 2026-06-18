@@ -6,6 +6,7 @@ import {
   asanaCreateTask,
   googleSheetsAppend,
   pipedriveCreateTask,
+  slackSend,
   smtpSendEmail,
   trelloCreateCard,
   twilioSendSms,
@@ -55,6 +56,12 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
     switch (action.type) {
       case "log":
         return ok(action, label, String(params.message ?? "(sem mensagem)"));
+
+      case "delay": {
+        const seconds = Math.min(Number(params.seconds ?? 5), 60); // Máximo 60s para evitar timeout do worker
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        return ok(action, label, `Aguardou ${seconds} segundos`);
+      }
 
       case "send_email": {
         const to = String(params.to ?? "");
@@ -124,6 +131,13 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           automationId: ctx.automationId,
           executionId: ctx.executionId,
         });
+        return ok(action, label, r.detail, r.output);
+      }
+
+      case "send_slack": {
+        const creds = integ.slack;
+        if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
+        const r = await slackSend(creds, params);
         return ok(action, label, r.detail, r.output);
       }
 
@@ -312,6 +326,33 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           condition_result: result,
           reason: out,
         });
+      }
+
+      case "transform": {
+        const instruction = String(params.instruction ?? "");
+        if (!instruction) return fail(action, label, "Instrução de transformação ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: `Transforme os dados fornecidos seguindo exatamente esta instrução: ${instruction}\n\nRetorne APENAS o resultado final da transformação, sem explicações.\n\nDados: ${JSON.stringify(
+                ctx.data
+              )}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        ctx.data.transformed_output = out;
+        return ok(action, label, "Dados transformados pela IA", { transformed_output: out });
       }
 
       default:
