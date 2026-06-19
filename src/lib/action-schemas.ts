@@ -162,6 +162,12 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "anthropic",
   },
+  wait_for_approval: {
+    fields: [
+      { key: "to", label: "Avisar por e-mail", type: "text", placeholder: "voce@empresa.com", hint: "E-mail que receberá o link para aprovação." },
+      { key: "subject", label: "Assunto do e-mail", type: "text", placeholder: "Aprovação necessária: {nome}" },
+    ],
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -182,6 +188,7 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   delay: { seconds: "5" },
   send_slack: { channel: "", text: "" },
   transform: { instruction: "" },
+  wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
   log: { message: "" },
 };
 
