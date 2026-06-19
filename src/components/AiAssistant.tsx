@@ -236,20 +236,32 @@ export function AiAssistant() {
         type="button"
         onClick={() => setOpen(!open)}
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-2xl text-white shadow-lg transition hover:bg-brand-700 hover:shadow-xl"
-        title="Assistente IA"
-        aria-label="Abrir assistente IA"
+        title={open ? "Fechar assistente IA" : "Abrir assistente IA"}
+        aria-label={open ? "Fechar assistente IA" : "Abrir assistente IA"}
+        aria-expanded={open}
+        aria-haspopup="true"
       >
-        {open ? "✕" : "💬"}
+        <span aria-hidden="true">{open ? "✕" : "💬"}</span>
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[min(520px,calc(100vh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div
+          role="dialog"
+          aria-label="Assistente IA"
+          className="fixed bottom-24 right-5 z-50 flex h-[min(520px,calc(100vh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        >
           <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-brand-600 to-indigo-600 px-4 py-3 text-white">
             <div>
               <p className="font-semibold">Assistente Automatite</p>
               <p className="text-xs text-white/80">Pode fazer qualquer coisa na sua conta</p>
             </div>
-            <button type="button" onClick={clearChat} className="text-xs text-white/70 hover:text-white" title="Limpar conversa">
+            <button
+              type="button"
+              onClick={clearChat}
+              className="text-xs text-white/70 hover:text-white"
+              title="Limpar conversa"
+              aria-label="Limpar conversa"
+            >
               Limpar
             </button>
           </div>
@@ -287,7 +299,11 @@ export function AiAssistant() {
               </div>
             )}
 
-            {busy && !pending && <p className="text-xs text-slate-400 animate-pulse">Pensando…</p>}
+            {busy && !pending && (
+              <p className="text-xs text-slate-400 animate-pulse" aria-live="polite">
+                Pensando…
+              </p>
+            )}
             <div ref={bottomRef} />
           </div>
 
@@ -302,6 +318,7 @@ export function AiAssistant() {
               <input
                 className="input flex-1 text-sm"
                 placeholder="Peça qualquer coisa…"
+                aria-label="Mensagem para o assistente"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 disabled={busy}
@@ -312,7 +329,7 @@ export function AiAssistant() {
                 className="btn-primary shrink-0 px-4"
                 aria-label="Enviar mensagem"
               >
-                →
+                <span aria-hidden="true">→</span>
               </button>
             </div>
           </form>
