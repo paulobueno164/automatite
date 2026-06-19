@@ -156,6 +156,13 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "slack",
   },
+  send_discord: {
+    fields: [
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead: {nome}" },
+      { key: "webhookUrl", label: "Webhook URL (opcional)", type: "url", optional: true, hint: "Opcional — se vazio, usa o configurado em Integrações." },
+    ],
+    resolveProvider: () => "discord",
+  },
   transform: {
     fields: [
       { key: "instruction", label: "Instrução de transformação", type: "textarea", placeholder: "Extraia apenas o primeiro nome em letras maiúsculas", hint: "O resultado ficará disponível na variável {transformed_output}." },
@@ -181,6 +188,7 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   condition: { prompt: "" },
   delay: { seconds: "5" },
   send_slack: { channel: "", text: "" },
+  send_discord: { text: "" },
   transform: { instruction: "" },
   log: { message: "" },
 };
