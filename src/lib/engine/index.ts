@@ -20,14 +20,21 @@ export class ExecutionLimitError extends Error {
  */
 export async function runAutomation(
   automationId: string,
-  payload: Record<string, unknown>
-): Promise<{ executionId: string; status: string; steps: ExecutionStep[] }> {
+  payload: Record<string, unknown>,
+  options: { isInternal?: boolean } = {}
+): Promise<{ executionId: string; status: string; steps: ExecutionStep[]; userId: string }> {
   const automation = await prisma.automation.findUnique({
     where: { id: automationId },
     include: { user: true },
   });
   if (!automation) throw new Error("Automação não encontrada");
   if (!automation.active) throw new Error("Automação está inativa");
+
+  // Proteção contra disparos externos de automações agendadas.
+  const trigger: Trigger = JSON.parse(automation.triggerJson);
+  if (trigger.type === "schedule" && !options.isInternal) {
+    throw new Error("Agendamentos só podem ser disparados internamente");
+  }
 
   // Enforcement do limite de execuções do ciclo (mês) conforme o tier do dono.
   const tier = getTier(automation.user.tier);
@@ -54,13 +61,19 @@ export async function runAutomation(
     payload,
   });
 
+  let cachedIntegrations: Record<string, any> | null = null;
   const ctx = {
     data: { ...payload },
     userId: automation.userId,
     automationId,
     executionId: execution.id,
     apiKey: resolveApiKey(automation.user.anthropicKey),
-    integrations: await loadUserIntegrations(automation.userId),
+    getIntegrations: async () => {
+      if (!cachedIntegrations) {
+        cachedIntegrations = await loadUserIntegrations(automation.userId);
+      }
+      return cachedIntegrations;
+    },
   };
   const steps: ExecutionStep[] = [];
   await runActionSequence(actions, ctx, steps);
@@ -72,7 +85,7 @@ export async function runAutomation(
     data: { status, logJson: JSON.stringify(steps) },
   });
 
-  return { executionId: execution.id, status, steps };
+  return { executionId: execution.id, status, steps, userId: automation.userId };
 }
 
 /**
@@ -128,7 +141,11 @@ export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: nu
 
     // Executa (ignora erros de limite/individuais para não travar o lote).
     try {
-      await runAutomation(a.id, { _trigger: "schedule", _firedAt: now.toISOString() });
+      await runAutomation(
+        a.id,
+        { _trigger: "schedule", _firedAt: now.toISOString() },
+        { isInternal: true }
+      );
       ids.push(a.id);
     } catch {
       // segue para a próxima; ainda assim reagendamos abaixo

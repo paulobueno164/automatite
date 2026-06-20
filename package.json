@@ -10,7 +10,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "postinstall": "prisma generate",
-    "test": "jest"
+    "test": "jest src/lib/__tests__/api-key-auth.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
