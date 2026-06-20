@@ -115,20 +115,37 @@ export default async function AutomationDetailPage({ params }: { params: { id: s
           <div className="space-y-2">
             {automation.executions.map((ex) => {
               const steps: ExecutionStep[] = JSON.parse(ex.logJson);
+              const isWaiting = ex.status === "waiting";
               return (
-                <details key={ex.id} className="rounded-lg border border-slate-200 p-3">
+                <details key={ex.id} className={`rounded-lg border p-3 ${isWaiting ? "border-amber-200 bg-amber-50/30" : "border-slate-200"}`}>
                   <summary className="flex cursor-pointer items-center gap-2 text-sm">
-                    <span className={`badge ${ex.status === "success" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                      {ex.status}
+                    <span className={`badge ${
+                      ex.status === "success" ? "bg-green-100 text-green-700" :
+                      ex.status === "waiting" ? "bg-amber-100 text-amber-700" :
+                      "bg-red-100 text-red-700"
+                    }`}>
+                      {ex.status === "waiting" ? "aguardando" : ex.status}
                     </span>
                     <span className="text-slate-500">{new Date(ex.createdAt).toLocaleString("pt-BR")}</span>
                     <span className="text-slate-400">· {steps.length} passos</span>
+                    {isWaiting && (
+                      <a
+                        href={`/api/approve?token=${ex.resumeToken}`}
+                        className="ml-auto rounded bg-amber-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-amber-700"
+                      >
+                        Aprovar agora
+                      </a>
+                    )}
                   </summary>
                   <ol className="mt-2 space-y-1">
                     {steps.map((s, i) => (
                       <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
-                        <span className={s.status === "success" ? "text-green-600" : "text-red-600"}>
-                          {s.status === "success" ? "✓" : "✕"}
+                        <span className={
+                          s.status === "success" ? "text-green-600" :
+                          s.status === "paused" ? "text-amber-600" :
+                          "text-red-600"
+                        }>
+                          {s.status === "success" ? "✓" : s.status === "paused" ? "⏳" : "✕"}
                         </span>
                         <span>
                           <strong>{s.label}</strong> — {s.detail}

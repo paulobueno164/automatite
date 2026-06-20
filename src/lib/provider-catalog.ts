@@ -10,7 +10,8 @@ export type ProviderId =
   | "twilio"
   | "trello"
   | "asana"
-  | "slack";
+  | "slack"
+  | "discord";
 
 export type ProviderField = {
   key: string;
@@ -134,6 +135,22 @@ export const PROVIDERS: ProviderDef[] = [
     fields: [
       { key: "botToken", label: "Bot User OAuth Token", type: "password", placeholder: "xoxb-..." },
       { key: "defaultChannel", label: "Canal padrão", type: "text", optional: true, placeholder: "#geral" },
+    ],
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    emoji: "👾",
+    handles: ["send_discord"],
+    docs: "https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks",
+    fields: [
+      {
+        key: "webhookUrl",
+        label: "Webhook URL",
+        type: "password",
+        placeholder: "https://discord.com/api/webhooks/...",
+        hint: "Crie um Webhook nas configurações do canal no Discord.",
+      },
     ],
   },
 ];

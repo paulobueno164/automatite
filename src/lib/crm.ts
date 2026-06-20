@@ -28,16 +28,18 @@ function normPhone(v?: string) {
   return s || null;
 }
 
+/** Busca lead existente por e-mail ou telefone em uma única query (otimização Bolt). */
 async function findExistingLead(userId: string, email: string | null, phone: string | null) {
-  if (!email && !phone) return null;
+  const conditions = [];
+  if (email) conditions.push({ email });
+  if (phone) conditions.push({ phone });
+
+  if (conditions.length === 0) return null;
 
   return prisma.lead.findFirst({
     where: {
       userId,
-      OR: [
-        ...(email ? [{ email }] : []),
-        ...(phone ? [{ phone }] : []),
-      ],
+      OR: conditions,
     },
   });
 }
