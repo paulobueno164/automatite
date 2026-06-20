@@ -30,6 +30,7 @@ export const ActionTypeEnum = z.enum([
   "delay", // aguarda um tempo antes de continuar
   "send_slack", // envia mensagem para o Slack
   "transform", // transforma dados usando IA
+  "wait_for_approval", // pausa a execução e aguarda aprovação humana
   "log", // apenas registra uma mensagem
 ]);
 
@@ -57,7 +58,7 @@ export type Flow = z.infer<typeof FlowSchema>;
 export type ExecutionStep = {
   action: ActionType;
   label: string;
-  status: "success" | "error" | "skipped";
+  status: "success" | "error" | "skipped" | "paused";
   detail: string;
   output?: unknown;
 };
@@ -77,5 +78,6 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   delay: { title: "Aguardar", description: "Pausa a execução por alguns segundos ou minutos." },
   send_slack: { title: "Enviar Slack", description: "Envia uma mensagem para um canal ou usuário no Slack." },
   transform: { title: "Transformar (IA)", description: "Usa a IA para formatar, limpar ou extrair dados." },
+  wait_for_approval: { title: "Aprovação Humana", description: "Pausa o fluxo e aguarda você aprovar ou reprovar para continuar." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },
 };

@@ -355,6 +355,15 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         return ok(action, label, "Dados transformados pela IA", { transformed_output: out });
       }
 
+      case "wait_for_approval": {
+        return {
+          action: "wait_for_approval",
+          label,
+          status: "paused",
+          detail: String(params.message ?? "Aguardando aprovação humana"),
+        };
+      }
+
       default:
         return fail(action, label, `Ação desconhecida: ${action.type}`);
     }

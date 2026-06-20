@@ -50,6 +50,7 @@ REGRAS:
   - "delay": use para pausar o fluxo por alguns segundos. Params: { "seconds": 10 }. Máximo 60.
   - "send_slack": use para enviar notificações para o Slack. Params: { "channel": "#vendas", "text": "Novo lead: {nome}" }.
   - "transform": use para limpar, formatar ou extrair dados usando IA. Params: { "instruction": "Extraia apenas o primeiro nome em letras maiúsculas" }. O resultado fica em {transformed_output}.
+  - "wait_for_approval": use para pausar o fluxo e pedir que o humano aprove antes de seguir para passos críticos (como mandar um e-mail importante). Params: { "message": "Por favor, revise os dados antes de prosseguirmos." }.
 13. VISUALIZAÇÃO DE FLUXO: Ao criar ou explicar uma automação, SEMPRE gere um diagrama Mermaid simples no final da sua resposta para ajudar o usuário a visualizar o caminho. Use o formato:
     graph TD
       A[Gatilho] --> B[Ação 1]
