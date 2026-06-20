@@ -79,168 +79,91 @@ export async function runAutomation(
   const steps: ExecutionStep[] = [];
   const result = await runActionSequence(actions, ctx, steps);
 
-  let status: string = steps.some((s) => s.status === "error") ? "error" : "success";
-  let pausedPath: string | undefined = undefined;
-  let resumeToken: string | undefined = undefined;
+  const status = result.paused
+    ? "waiting"
+    : steps.some((s) => s.status === "error")
+    ? "error"
+    : "success";
+
+  const data: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    inputJson: JSON.stringify(ctx.data) // Salva estado atual dos dados
+  };
 
   if (result.paused) {
-    status = "paused";
-    pausedPath = result.pausedPath;
-    resumeToken = randomBytes(24).toString("hex");
+    data.pausedPath = result.pausedPath;
+    data.resumeToken = randomBytes(24).toString("hex");
+
+    sendApprovalNotification(data.resumeToken, steps);
   }
 
   await prisma.execution.update({
     where: { id: execution.id },
-    data: {
-      status,
-      logJson: JSON.stringify(steps),
-      pausedPath,
-      resumeToken,
-      inputJson: JSON.stringify(ctx.data), // Salva o estado atual dos dados
-    },
+    data,
   });
 
   return { executionId: execution.id, status, steps, userId: automation.userId };
 }
 
-/**
- * Retoma uma execução pausada.
- */
-export async function resumeExecution(
-  executionId: string,
-  resumeToken: string,
-  decision: "approve" | "reject"
-): Promise<{ status: string; steps: ExecutionStep[] }> {
-  const execution = await prisma.execution.findFirst({
-    where: { id: executionId, resumeToken, status: "paused" },
-    include: { automation: { include: { user: true } } },
-  });
-
-  if (!execution) throw new Error("Execução não encontrada ou token inválido");
-
-  if (decision === "reject") {
-    const steps: ExecutionStep[] = JSON.parse(execution.logJson);
-    steps.push({
-      action: "wait_for_approval",
-      label: "Aprovação Humana",
-      status: "skipped",
-      detail: "Execução rejeitada pelo usuário",
-    });
-    await prisma.execution.update({
-      where: { id: execution.id },
-      data: { status: "error", logJson: JSON.stringify(steps), resumeToken: null },
-    });
-    return { status: "error", steps };
-  }
-
-  const actions: Action[] = JSON.parse(execution.automation.actionsJson);
-  const steps: ExecutionStep[] = JSON.parse(execution.logJson);
-  const payload = JSON.parse(execution.inputJson);
-
-  let cachedIntegrations: Record<string, any> | null = null;
-  const ctx = {
-    data: payload,
-    userId: execution.automation.userId,
-    automationId: execution.automationId,
-    executionId: execution.id,
-    apiKey: resolveApiKey(execution.automation.user.anthropicKey),
-    getIntegrations: async () => {
-      if (!cachedIntegrations) {
-        cachedIntegrations = await loadUserIntegrations(execution.automation.userId);
-      }
-      return cachedIntegrations;
-    },
-  };
-
-  // Marcar o passo de aprovação como sucesso
+/** Notificação simulada de aprovação */
+function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
   const lastStep = steps[steps.length - 1];
-  if (lastStep && lastStep.action === "wait_for_approval" && lastStep.status === "paused") {
-    lastStep.status = "success";
-    lastStep.detail = "Aprovado pelo usuário";
+  if (lastStep.action === "wait_for_approval") {
+    const { to, subject } = (lastStep.output as any) || {};
+    if (to) {
+      console.log(`[APPROVAL] Link de aprovação para ${to}: /api/approve?token=${token}`);
+      // Aqui poderíamos enviar e-mail real
+    }
   }
-
-  // Retomar a partir do path salvo
-  // IMPORTANTE: precisamos pular o passo de aprovação que já foi executado e está no logJson
-  // O pausedPath aponta para o índice da ação wait_for_approval.
-  // Para retomar, devemos começar na PRÓXIMA ação.
-  const resumePath = execution.pausedPath;
-  let result;
-  if (resumePath) {
-    const parts = resumePath.split(".");
-    // Incrementa o último índice para pular o wait_for_approval
-    parts[parts.length - 1] = (parseInt(parts[parts.length - 1]) + 1).toString();
-    result = await runActionSequence(actions, ctx, steps, parts.join("."));
-  } else {
-    result = await runActionSequence(actions, ctx, steps);
-  }
-
-  let status: string = steps.some((s) => s.status === "error") ? "error" : "success";
-  let pausedPath: string | null = null;
-  let nextResumeToken: string | null = null;
-
-  if (result.paused) {
-    status = "paused";
-    pausedPath = result.pausedPath;
-    nextResumeToken = randomBytes(24).toString("hex");
-  }
-
-  await prisma.execution.update({
-    where: { id: execution.id },
-    data: {
-      status,
-      logJson: JSON.stringify(steps),
-      pausedPath,
-      resumeToken: nextResumeToken,
-      inputJson: JSON.stringify(ctx.data),
-    },
-  });
-
-  return { status, steps };
 }
 
 /**
  * Executa uma sequência de ações de forma recursiva (suporta branching).
- * @param resumePath Path no formato "0.if_true.1" para retomar de um ponto específico.
+ * @param options startIndex para retomada no mesmo nível, resumePath para navegação profunda.
  */
 async function runActionSequence(
   actions: Action[],
   ctx: EngineContext,
   steps: ExecutionStep[],
-  resumePath?: string
+  options: { startIndex?: number; resumePath?: string } = {}
 ): Promise<{ paused: boolean; pausedPath?: string }> {
-  const resumeParts = resumePath ? resumePath.split(".") : [];
-  const startIndex = resumeParts.length > 0 ? parseInt(resumeParts[0]) : 0;
+  const { startIndex = 0, resumePath } = options;
+
+  // Se temos um resumePath, precisamos navegar até o nível correto.
+  // Formato: "index.branchKey.index.branchKey..."
+  if (resumePath) {
+    const parts = resumePath.split(".");
+    const currentIndex = parseInt(parts[0], 10);
+
+    // Se o path tem apenas um elemento, significa que paramos EXATAMENTE neste nível.
+    // Para retomar, devemos pular esta ação (que era o wait_for_approval).
+    if (parts.length === 1) {
+        return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
+    }
+
+    const branchKey = parts[1]; // "if_true" | "if_false"
+    const remainingPath = parts.slice(2).join(".");
+
+    const action = actions[currentIndex];
+    const branchActions = action.params?.[branchKey];
+
+    if (Array.isArray(branchActions)) {
+      const subResult = await runActionSequence(branchActions, ctx, steps, {
+        resumePath: remainingPath || undefined,
+      });
+      if (subResult.paused) {
+        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+      }
+    }
+
+    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
+  }
 
   for (let i = startIndex; i < actions.length; i++) {
     const action = actions[i];
-    const currentPath = resumePath && resumeParts.length > 1 ? resumeParts.slice(1).join(".") : undefined;
-
-    // Se estamos resumindo e este NÃO é o passo que contém o sub-path, pulamos a execução
-    // (já que o startIndex garante que começamos no lugar certo do array atual).
-    // Mas se houver sub-path (ex: if_true), precisamos entrar nele.
-
-    let step: ExecutionStep;
-
-    if (currentPath && action.type === "condition") {
-      // Estamos resumindo dentro de um branch de uma condição
-      const branchKey = resumeParts[1] as "if_true" | "if_false";
-      const branchActions = action.params?.[branchKey];
-      if (Array.isArray(branchActions)) {
-        const result = await runActionSequence(
-          branchActions,
-          ctx,
-          steps,
-          resumeParts.slice(2).join(".")
-        );
-        if (result.paused) {
-          return { paused: true, pausedPath: `${i}.${branchKey}.${result.pausedPath}` };
-        }
-      }
-      // Após terminar o branch, continuamos para a próxima ação do nível atual
-      continue;
-    }
-
-    step = await runAction(action, ctx);
+    const step = await runAction(action, ctx);
     steps.push(step);
 
     if (step.status === "paused") {
@@ -261,8 +184,100 @@ async function runActionSequence(
       }
     }
   }
-
   return { paused: false };
+}
+
+/**
+ * Retoma uma execução pausada.
+ */
+export async function resumeAutomation(
+  executionId: string,
+  resumeToken: string,
+  decision: "approve" | "reject" = "approve"
+): Promise<{ success: boolean; status: string; steps: ExecutionStep[] }> {
+  const execution = await prisma.execution.findUnique({
+    where: { id: executionId },
+    include: { automation: { include: { user: true } } },
+  });
+
+  if (!execution) throw new Error("Execução não encontrada");
+  if (execution.status !== "waiting") throw new Error("Esta execução não está aguardando aprovação");
+  if (execution.resumeToken !== resumeToken) throw new Error("Token de aprovação inválido");
+
+  if (decision === "reject") {
+    const steps: ExecutionStep[] = JSON.parse(execution.logJson);
+    steps.push({
+      action: "wait_for_approval",
+      label: "Aprovação Humana",
+      status: "skipped",
+      detail: "Execução rejeitada pelo usuário",
+    });
+    await prisma.execution.update({
+      where: { id: execution.id },
+      data: { status: "error", logJson: JSON.stringify(steps), resumeToken: null }
+    });
+    return { success: true, status: "error", steps };
+  }
+
+  const automation = execution.automation;
+  const payload = JSON.parse(execution.inputJson);
+  const actions: Action[] = JSON.parse(automation.actionsJson);
+  const steps: ExecutionStep[] = JSON.parse(execution.logJson);
+
+  // Marca o passo de pausa como sucesso para continuar
+  const pausedStepIdx = steps.findLastIndex((s) => s.status === "paused");
+  if (pausedStepIdx !== -1) {
+    steps[pausedStepIdx].status = "success";
+    steps[pausedStepIdx].detail = "Aprovação recebida manualmente";
+  }
+
+  let cachedIntegrations: Record<string, any> | null = null;
+  const ctx = {
+    data: { ...payload },
+    userId: automation.userId,
+    automationId: automation.id,
+    executionId: execution.id,
+    apiKey: resolveApiKey(automation.user.anthropicKey),
+    getIntegrations: async () => {
+      if (!cachedIntegrations) {
+        cachedIntegrations = await loadUserIntegrations(automation.userId);
+      }
+      return cachedIntegrations;
+    },
+  };
+
+  // Retoma usando o pausedPath salvo
+  const result = await runActionSequence(actions, ctx, steps, {
+    resumePath: execution.pausedPath || undefined,
+  });
+
+  const status = result.paused
+    ? "waiting"
+    : steps.some((s) => s.status === "error")
+    ? "error"
+    : "success";
+
+  const updateData: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    inputJson: JSON.stringify(ctx.data)
+  };
+
+  if (result.paused) {
+    updateData.pausedPath = result.pausedPath;
+    updateData.resumeToken = randomBytes(24).toString("hex");
+    sendApprovalNotification(updateData.resumeToken, steps);
+  } else {
+    updateData.pausedPath = null;
+    updateData.resumeToken = null;
+  }
+
+  await prisma.execution.update({
+    where: { id: execution.id },
+    data: updateData,
+  });
+
+  return { success: true, status, steps };
 }
 
 /**

@@ -15,6 +15,7 @@ import {
 import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
+import { isSafeUrl } from "../fix-urls";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -228,6 +229,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       case "http_request": {
         const url = String(params.url ?? "");
         if (!url) return fail(action, label, "URL ausente");
+        if (!isSafeUrl(url)) return fail(action, label, "URL não permitida (segurança)");
         const method = String(params.method ?? "POST").toUpperCase();
         const res = await fetch(url, {
           method,
@@ -261,6 +263,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         const imageUrl = String(params.image_url ?? "");
         const prompt = String(params.prompt ?? "O que tem nesta imagem?");
         if (!imageUrl) return fail(action, label, "URL da imagem ausente");
+        if (!isSafeUrl(imageUrl)) return fail(action, label, "URL da imagem não permitida (segurança)");
         if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
 
         const imageRes = await fetch(imageUrl);
@@ -356,11 +359,14 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "wait_for_approval": {
+        // Esta ação não envia o e-mail de fato aqui no runAction para evitar efeitos colaterais
+        // se o runActionSequence tentar re-executar. O engine vai tratar o status "paused".
         return {
           action: "wait_for_approval",
           label,
           status: "paused",
-          detail: String(params.message ?? "Aguardando aprovação humana"),
+          detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
+          output: { to: params.to, subject: params.subject, message: params.message },
         };
       }
 
