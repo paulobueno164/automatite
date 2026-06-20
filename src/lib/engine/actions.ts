@@ -135,6 +135,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "send_slack": {
+        const integ = await ctx.getIntegrations();
         const creds = integ.slack;
         if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
         const r = await slackSend(creds, params);
@@ -353,6 +354,18 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
 
         ctx.data.transformed_output = out;
         return ok(action, label, "Dados transformados pela IA", { transformed_output: out });
+      }
+
+      case "wait_for_approval": {
+        // Esta ação não envia o e-mail de fato aqui no runAction para evitar efeitos colaterais
+        // se o runActionSequence tentar re-executar. O engine vai tratar o status "paused".
+        return {
+          action: "wait_for_approval",
+          label,
+          status: "paused",
+          detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
+          output: { to: params.to, subject: params.subject },
+        };
       }
 
       default:
