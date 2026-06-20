@@ -16,6 +16,7 @@ import {
 import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
+import { isSafeUrl } from "../security";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -240,6 +241,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       case "http_request": {
         const url = String(params.url ?? "");
         if (!url) return fail(action, label, "URL ausente");
+        if (!isSafeUrl(url)) return fail(action, label, "URL não permitida (segurança)");
         const method = String(params.method ?? "POST").toUpperCase();
         const res = await fetch(url, {
           method,
@@ -273,6 +275,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         const imageUrl = String(params.image_url ?? "");
         const prompt = String(params.prompt ?? "O que tem nesta imagem?");
         if (!imageUrl) return fail(action, label, "URL da imagem ausente");
+        if (!isSafeUrl(imageUrl)) return fail(action, label, "URL da imagem não permitida (segurança)");
         if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
 
         const imageRes = await fetch(imageUrl);
