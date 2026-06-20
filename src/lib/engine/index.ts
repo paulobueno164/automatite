@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { prisma } from "../db";
 import { Action, ExecutionStep, Trigger } from "../flow-types";
 import { resolveApiKey } from "../anthropic";
@@ -76,16 +77,40 @@ export async function runAutomation(
     },
   };
   const steps: ExecutionStep[] = [];
-  await runActionSequence(actions, ctx, steps);
+  const result = await runActionSequence(actions, ctx, steps);
 
-  const status = steps.some((s) => s.status === "error") ? "error" : "success";
+  const status = result.paused
+    ? "waiting"
+    : steps.some((s) => s.status === "error")
+    ? "error"
+    : "success";
+
+  const data: any = { status, logJson: JSON.stringify(steps) };
+  if (result.paused) {
+    data.pausedPath = result.pausedPath;
+    data.resumeToken = randomBytes(24).toString("hex");
+
+    sendApprovalNotification(data.resumeToken, steps);
+  }
 
   await prisma.execution.update({
     where: { id: execution.id },
-    data: { status, logJson: JSON.stringify(steps) },
+    data,
   });
 
   return { executionId: execution.id, status, steps, userId: automation.userId };
+}
+
+/** Notificação simulada de aprovação */
+function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
+  const lastStep = steps[steps.length - 1];
+  if (lastStep.action === "wait_for_approval") {
+    const { to, subject } = (lastStep.output as any) || {};
+    if (to) {
+      console.log(`[APPROVAL] Link de aprovação para ${to}: /api/approve?token=${token}`);
+      // Aqui poderíamos enviar e-mail real
+    }
+  }
 }
 
 /**
@@ -94,11 +119,43 @@ export async function runAutomation(
 async function runActionSequence(
   actions: Action[],
   ctx: EngineContext,
-  steps: ExecutionStep[]
-): Promise<void> {
-  for (const action of actions) {
+  steps: ExecutionStep[],
+  options: { startIndex?: number; resumePath?: string } = {}
+): Promise<{ paused: boolean; pausedPath?: string }> {
+  const { startIndex = 0, resumePath } = options;
+
+  // Se temos um resumePath, precisamos navegar até o nível correto.
+  // Formato: "index.branchKey.index.branchKey..."
+  if (resumePath) {
+    const parts = resumePath.split(".");
+    const currentIndex = parseInt(parts[0], 10);
+    const branchKey = parts[1]; // "if_true" | "if_false"
+    const remainingPath = parts.slice(2).join(".");
+
+    const action = actions[currentIndex];
+    const branchActions = action.params?.[branchKey];
+
+    if (Array.isArray(branchActions)) {
+      const subResult = await runActionSequence(branchActions, ctx, steps, {
+        resumePath: remainingPath || undefined,
+      });
+      if (subResult.paused) {
+        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+      }
+    }
+
+    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
+  }
+
+  for (let i = startIndex; i < actions.length; i++) {
+    const action = actions[i];
     const step = await runAction(action, ctx);
     steps.push(step);
+
+    if (step.status === "paused") {
+      return { paused: true, pausedPath: String(i) };
+    }
 
     // Se for uma condição e tiver ramos, executa o ramo correspondente.
     if (action.type === "condition" && step.status === "success") {
@@ -107,13 +164,87 @@ async function runActionSequence(
       const branchActions = action.params?.[branchKey];
 
       if (Array.isArray(branchActions) && branchActions.length > 0) {
-        await runActionSequence(branchActions, ctx, steps);
+        const subResult = await runActionSequence(branchActions, ctx, steps);
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
+        }
       }
     }
-
-    // Se a ação falhou, poderíamos interromper o fluxo aqui ou continuar.
-    // O Automatite hoje continua, então mantemos a consistência.
   }
+  return { paused: false };
+}
+
+/**
+ * Retoma uma execução pausada.
+ */
+export async function resumeAutomation(
+  executionId: string,
+  resumeToken: string
+): Promise<{ success: boolean; status: string; steps: ExecutionStep[] }> {
+  const execution = await prisma.execution.findUnique({
+    where: { id: executionId },
+    include: { automation: { include: { user: true } } },
+  });
+
+  if (!execution) throw new Error("Execução não encontrada");
+  if (execution.status !== "waiting") throw new Error("Esta execução não está aguardando aprovação");
+  if (execution.resumeToken !== resumeToken) throw new Error("Token de aprovação inválido");
+
+  const automation = execution.automation;
+  const payload = JSON.parse(execution.inputJson);
+  const actions: Action[] = JSON.parse(automation.actionsJson);
+  const steps: ExecutionStep[] = JSON.parse(execution.logJson);
+
+  // Marca o passo de pausa como sucesso para continuar
+  // Procuramos o último passo que está como 'paused'
+  const pausedStepIdx = steps.findLastIndex((s) => s.status === "paused");
+  if (pausedStepIdx !== -1) {
+    steps[pausedStepIdx].status = "success";
+    steps[pausedStepIdx].detail = "Aprovação recebida manualmente";
+  }
+
+  let cachedIntegrations: Record<string, any> | null = null;
+  const ctx = {
+    data: { ...payload },
+    userId: automation.userId,
+    automationId: automation.id,
+    executionId: execution.id,
+    apiKey: resolveApiKey(automation.user.anthropicKey),
+    getIntegrations: async () => {
+      if (!cachedIntegrations) {
+        cachedIntegrations = await loadUserIntegrations(automation.userId);
+      }
+      return cachedIntegrations;
+    },
+  };
+
+  // Retoma usando o pausedPath salvo
+  const result = await runActionSequence(actions, ctx, steps, {
+    resumePath: execution.pausedPath || undefined,
+  });
+
+  const status = result.paused
+    ? "waiting"
+    : steps.some((s) => s.status === "error")
+    ? "error"
+    : "success";
+
+  const updateData: any = { status, logJson: JSON.stringify(steps) };
+  if (result.paused) {
+    updateData.pausedPath = result.pausedPath;
+    updateData.resumeToken = randomBytes(24).toString("hex");
+    sendApprovalNotification(updateData.resumeToken, steps);
+  } else {
+    updateData.pausedPath = null;
+    updateData.resumeToken = null;
+  }
+
+  await prisma.execution.update({
+    where: { id: execution.id },
+    data: updateData,
+  });
+
+  return { success: true, status, steps };
 }
 
 /**

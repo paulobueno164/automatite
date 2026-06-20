@@ -153,7 +153,7 @@ export function FormBuilder({
                     onClick={() => moveField(i, -1)}
                     className="btn-ghost px-2 py-0.5 text-xs"
                     disabled={i === 0}
-                    aria-label="Mover campo para cima"
+                    aria-label="Mover para cima"
                   >
                     ↑
                   </button>
@@ -162,7 +162,7 @@ export function FormBuilder({
                     onClick={() => moveField(i, 1)}
                     className="btn-ghost px-2 py-0.5 text-xs"
                     disabled={i === config.fields.length - 1}
-                    aria-label="Mover campo para baixo"
+                    aria-label="Mover para baixo"
                   >
                     ↓
                   </button>

@@ -306,7 +306,12 @@ export function AiAssistant() {
                 onChange={(e) => setInput(e.target.value)}
                 disabled={busy}
               />
-              <button type="submit" disabled={busy || !input.trim()} className="btn-primary shrink-0 px-4">
+              <button
+                type="submit"
+                disabled={busy || !input.trim()}
+                className="btn-primary shrink-0 px-4"
+                aria-label="Enviar mensagem"
+              >
                 →
               </button>
             </div>
