@@ -18,4 +18,4 @@ prisma/dev.db-journal
 .DS_Store
 next-env.d.ts
 .claude/
-coverage/
+tsconfig.tsbuildinfo

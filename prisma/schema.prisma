@@ -86,14 +86,17 @@ model Execution {
   id           String     @id @default(cuid())
   automationId String
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  // "success" | "error" | "running"
+  // "success" | "error" | "running" | "waiting"
   status       String     @default("running")
   inputJson    String     @default("{}")
   logJson      String     @default("[]")
+  pausedPath   String?
+  resumeToken  String?    @unique
   createdAt    DateTime   @default(now())
 
   @@index([automationId])
   @@index([createdAt])
+  @@index([resumeToken])
 }
 
 // Registro salvo por uma automação (substitui planilha para usuários leigos).

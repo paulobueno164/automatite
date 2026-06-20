@@ -4,8 +4,10 @@ import { Action, ExecutionStep } from "../flow-types";
 import { Credentials } from "../provider-catalog";
 import {
   asanaCreateTask,
+  discordSend,
   googleSheetsAppend,
   pipedriveCreateTask,
+  slackSend,
   smtpSendEmail,
   trelloCreateCard,
   twilioSendSms,
@@ -14,18 +16,20 @@ import {
 import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
+import { isSafeUrl } from "../security";
 
-type Context = {
+export type EngineContext = {
   data: Record<string, unknown>;
   userId: string;
   automationId: string;
   executionId: string;
   apiKey?: string;
-  integrations: Record<string, Credentials>;
+  /** Lazy loader for user integrations to avoid unnecessary DB queries and decryption. */
+  getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: Context): unknown {
+function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
       const v = ctx.data[key];
@@ -46,21 +50,27 @@ function interpolate(value: unknown, ctx: Context): unknown {
  * Cada ação tenta a integração real quando há credencial conectada; senão,
  * cai em modo mock (registra no log sem chamar o serviço externo).
  */
-export async function runAction(action: Action, ctx: Context): Promise<ExecutionStep> {
+export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
-  const integ = ctx.integrations;
 
   try {
     switch (action.type) {
       case "log":
         return ok(action, label, String(params.message ?? "(sem mensagem)"));
 
+      case "delay": {
+        const seconds = Math.min(Number(params.seconds ?? 5), 60); // Máximo 60s para evitar timeout do worker
+        await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+        return ok(action, label, `Aguardou ${seconds} segundos`);
+      }
+
       case "send_email": {
         const to = String(params.to ?? "");
         const subject = String(params.subject ?? "");
         if (!to) return fail(action, label, "Destinatário ausente");
 
+        const integ = await ctx.getIntegrations();
         if (integ.smtp?.host && integ.smtp?.user && integ.smtp?.password) {
           const r = await smtpSendEmail(integ.smtp, params);
           await logLeadActivityByContact({
@@ -102,6 +112,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
       }
 
       case "send_sms": {
+        const integ = await ctx.getIntegrations();
         const creds =
           integ.twilio ??
           (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER
@@ -125,7 +136,26 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
         return ok(action, label, r.detail, r.output);
       }
 
+      case "send_slack": {
+        const integ = await ctx.getIntegrations();
+        const creds = integ.slack;
+        if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
+        const r = await slackSend(creds, params);
+        return ok(action, label, r.detail, r.output);
+      }
+
+      case "send_discord": {
+        const integ = await ctx.getIntegrations();
+        const creds = integ.discord;
+        if (!creds && !params.webhookUrl) {
+          return fail(action, label, "Discord não conectado — configure em Configurações → Integrações");
+        }
+        const r = await discordSend(creds ?? {}, params);
+        return ok(action, label, r.detail, r.output);
+      }
+
       case "send_whatsapp": {
+        const integ = await ctx.getIntegrations();
         const creds = integ.whatsapp;
         if (!creds) return fail(action, label, "WhatsApp não conectado — configure em Configurações → Integrações");
         const r = await whatsappSend(creds, params);
@@ -153,6 +183,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
           });
           return ok(action, label, `Salvo em Registros → ${sheetLabel}`, r);
         }
+        const integ = await ctx.getIntegrations();
         const creds = integ.google_sheets;
         if (!creds) return fail(action, label, "Google Sheets não conectado — use Registros (Automatite) ou conecte em Configurações");
         const r = await googleSheetsAppend(creds, params, ctx.data);
@@ -188,6 +219,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
           const r = await createInternalTask({ userId: ctx.userId, automationId: ctx.automationId, title });
           return ok(action, label, `Tarefa criada: "${r.title}"`, r);
         }
+        const integ = await ctx.getIntegrations();
         if (app.includes("pipedrive")) {
           if (!integ.pipedrive) return fail(action, label, "Pipedrive não conectado — configure em Configurações → Integrações");
           const r = await pipedriveCreateTask(integ.pipedrive, params);
@@ -209,6 +241,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
       case "http_request": {
         const url = String(params.url ?? "");
         if (!url) return fail(action, label, "URL ausente");
+        if (!isSafeUrl(url)) return fail(action, label, "URL não permitida (segurança)");
         const method = String(params.method ?? "POST").toUpperCase();
         const res = await fetch(url, {
           method,
@@ -226,7 +259,7 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
         }
         const client = new Anthropic({ apiKey: ctx.apiKey });
         const resp = await client.messages.create({
-          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
           max_tokens: 600,
           messages: [{ role: "user", content: prompt }],
         });
@@ -236,6 +269,117 @@ export async function runAction(action: Action, ctx: Context): Promise<Execution
           .join("");
         ctx.data.ai_output = out;
         return ok(action, label, "Texto gerado pela IA", { ai_output: out });
+      }
+
+      case "analyze_image": {
+        const imageUrl = String(params.image_url ?? "");
+        const prompt = String(params.prompt ?? "O que tem nesta imagem?");
+        if (!imageUrl) return fail(action, label, "URL da imagem ausente");
+        if (!isSafeUrl(imageUrl)) return fail(action, label, "URL da imagem não permitida (segurança)");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const imageRes = await fetch(imageUrl);
+        if (!imageRes.ok) return fail(action, label, `Erro ao baixar imagem: ${imageRes.statusText}`);
+        const buffer = await imageRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString("base64");
+        const contentType = imageRes.headers.get("content-type") || "image/jpeg";
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: contentType.includes("png") ? "image/png" : contentType.includes("gif") ? "image/gif" : contentType.includes("webp") ? "image/webp" : "image/jpeg",
+                    data: base64,
+                  },
+                },
+                { type: "text", text: prompt },
+              ],
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+        ctx.data.image_analysis = out;
+        return ok(action, label, "Imagem analisada pela IA", { image_analysis: out });
+      }
+
+      case "condition": {
+        const prompt = String(params.prompt ?? "");
+        if (!prompt) return fail(action, label, "Pergunta (prompt) ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 50,
+          messages: [
+            {
+              role: "user",
+              content: `Responda apenas SIM ou NÃO (e uma breve justificativa opcional após) para a pergunta baseada nos dados fornecidos.\n\nDados: ${JSON.stringify(
+                ctx.data
+              )}\n\nPergunta: ${prompt}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        const result = out.toUpperCase().includes("SIM");
+        return ok(action, label, `Condição avaliada como ${result ? "SIM" : "NÃO"}: ${out}`, {
+          condition_result: result,
+          reason: out,
+        });
+      }
+
+      case "transform": {
+        const instruction = String(params.instruction ?? "");
+        if (!instruction) return fail(action, label, "Instrução de transformação ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: `Transforme os dados fornecidos seguindo exatamente esta instrução: ${instruction}\n\nRetorne APENAS o resultado final da transformação, sem explicações.\n\nDados: ${JSON.stringify(
+                ctx.data
+              )}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        ctx.data.transformed_output = out;
+        return ok(action, label, "Dados transformados pela IA", { transformed_output: out });
+      }
+
+      case "wait_for_approval": {
+        // Esta ação não envia o e-mail de fato aqui no runAction para evitar efeitos colaterais
+        // se o runActionSequence tentar re-executar. O engine vai tratar o status "paused".
+        return {
+          action: "wait_for_approval",
+          label,
+          status: "paused",
+          detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
+          output: { to: params.to, subject: params.subject },
+        };
       }
 
       default:
