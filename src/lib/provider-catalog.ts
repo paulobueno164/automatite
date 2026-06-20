@@ -9,7 +9,9 @@ export type ProviderId =
   | "pipedrive"
   | "twilio"
   | "trello"
-  | "asana";
+  | "asana"
+  | "slack"
+  | "discord";
 
 export type ProviderField = {
   key: string;
@@ -122,6 +124,33 @@ export const PROVIDERS: ProviderDef[] = [
     fields: [
       { key: "accessToken", label: "Personal Access Token", type: "password" },
       { key: "defaultProjectId", label: "ID do projeto (padrão)", type: "text", optional: true },
+    ],
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    emoji: "💬",
+    handles: ["send_slack"],
+    docs: "https://api.slack.com/messaging/sending",
+    fields: [
+      { key: "botToken", label: "Bot User OAuth Token", type: "password", placeholder: "xoxb-..." },
+      { key: "defaultChannel", label: "Canal padrão", type: "text", optional: true, placeholder: "#geral" },
+    ],
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    emoji: "👾",
+    handles: ["send_discord"],
+    docs: "https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks",
+    fields: [
+      {
+        key: "webhookUrl",
+        label: "Webhook URL",
+        type: "password",
+        placeholder: "https://discord.com/api/webhooks/...",
+        hint: "Crie um Webhook nas configurações do canal no Discord.",
+      },
     ],
   },
 ];

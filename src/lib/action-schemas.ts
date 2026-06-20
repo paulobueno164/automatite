@@ -144,6 +144,37 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "anthropic",
   },
+  delay: {
+    fields: [
+      { key: "seconds", label: "Segundos", type: "text", placeholder: "10", hint: "Máximo 60 segundos." },
+    ],
+  },
+  send_slack: {
+    fields: [
+      { key: "channel", label: "Canal", type: "text", placeholder: "#geral", hint: "Nome do canal (ex: #vendas) ou ID." },
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead: {nome}" },
+    ],
+    resolveProvider: () => "slack",
+  },
+  send_discord: {
+    fields: [
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead: {nome}" },
+      { key: "webhookUrl", label: "Webhook URL (opcional)", type: "url", optional: true, hint: "Opcional — se vazio, usa o configurado em Integrações." },
+    ],
+    resolveProvider: () => "discord",
+  },
+  transform: {
+    fields: [
+      { key: "instruction", label: "Instrução de transformação", type: "textarea", placeholder: "Extraia apenas o primeiro nome em letras maiúsculas", hint: "O resultado ficará disponível na variável {transformed_output}." },
+    ],
+    resolveProvider: () => "anthropic",
+  },
+  wait_for_approval: {
+    fields: [
+      { key: "to", label: "Avisar por e-mail", type: "text", placeholder: "voce@empresa.com", hint: "E-mail que receberá o link para aprovação." },
+      { key: "subject", label: "Assunto do e-mail", type: "text", placeholder: "Aprovação necessária: {nome}" },
+    ],
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -161,6 +192,11 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   ai_generate: { prompt: "" },
   analyze_image: { image_url: "", prompt: "" },
   condition: { prompt: "" },
+  delay: { seconds: "5" },
+  send_slack: { channel: "", text: "" },
+  send_discord: { text: "" },
+  transform: { instruction: "" },
+  wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
   log: { message: "" },
 };
 
