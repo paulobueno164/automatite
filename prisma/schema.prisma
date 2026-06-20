@@ -91,10 +91,12 @@ model Execution {
   inputJson    String     @default("{}")
   logJson      String     @default("[]")
   pausedPath   String?
+  contextJson  String?
   resumeToken  String?    @unique
   createdAt    DateTime   @default(now())
 
   @@index([automationId])
+  @@index([automationId, status])
   @@index([createdAt])
   @@index([resumeToken])
 }
