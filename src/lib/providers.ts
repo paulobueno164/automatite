@@ -141,8 +141,8 @@ export async function smtpSendEmail(creds: Credentials, params: Params): Promise
   return { detail: `E-mail enviado de ${fromEmail} para ${to}`, output: { messageId: info.messageId } };
 }
 
-/** Slack — envia uma mensagem para um canal. */
-export async function slackSendNotification(creds: Credentials, params: Params): Promise<ProviderResult> {
+/** Slack — envia mensagem para um canal. */
+export async function slackSend(creds: Credentials, params: Params): Promise<ProviderResult> {
   const channel = str(params.channel || creds.defaultChannel);
   const text = str(params.text || params.body);
   if (!channel) throw new Error("Canal (channel) ausente");
@@ -152,14 +152,11 @@ export async function slackSendNotification(creds: Credentials, params: Params):
     method: "POST",
     headers: {
       Authorization: `Bearer ${creds.botToken}`,
-      "Content-Type": "application/json; charset=utf-8",
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({ channel, text }),
   });
-
-  if (!res.ok) throw new Error(`Slack HTTP ${res.status}: ${await res.text()}`);
   const json = await res.json();
-  if (!json.ok) throw new Error(`Slack API error: ${json.error}`);
-
+  if (!json.ok) throw new Error(`Slack error: ${json.error}`);
   return { detail: `Mensagem enviada para o Slack (${channel})`, output: json };
 }

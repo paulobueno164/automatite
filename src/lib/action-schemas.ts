@@ -144,12 +144,23 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
     ],
     resolveProvider: () => "anthropic",
   },
+  delay: {
+    fields: [
+      { key: "seconds", label: "Segundos", type: "text", placeholder: "10", hint: "Máximo 60 segundos." },
+    ],
+  },
   send_slack: {
     fields: [
-      { key: "channel", label: "Canal", type: "text", placeholder: "#geral", hint: "Nome ou ID do canal (opcional se configurou o padrão)." },
-      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead recebido: {nome}" },
+      { key: "channel", label: "Canal", type: "text", placeholder: "#geral", hint: "Nome do canal (ex: #vendas) ou ID." },
+      { key: "text", label: "Mensagem", type: "textarea", placeholder: "Novo lead: {nome}" },
     ],
     resolveProvider: () => "slack",
+  },
+  transform: {
+    fields: [
+      { key: "instruction", label: "Instrução de transformação", type: "textarea", placeholder: "Extraia apenas o primeiro nome em letras maiúsculas", hint: "O resultado ficará disponível na variável {transformed_output}." },
+    ],
+    resolveProvider: () => "anthropic",
   },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
@@ -168,7 +179,9 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   ai_generate: { prompt: "" },
   analyze_image: { image_url: "", prompt: "" },
   condition: { prompt: "" },
+  delay: { seconds: "5" },
   send_slack: { channel: "", text: "" },
+  transform: { instruction: "" },
   log: { message: "" },
 };
 

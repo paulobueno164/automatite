@@ -38,9 +38,6 @@ importers:
       resend:
         specifier: ^6.12.4
         version: 6.12.4
-      server-only:
-        specifier: ^0.0.1
-        version: 0.0.1
       stripe:
         specifier: ^22.2.0
         version: 22.2.1(@types/node@20.19.43)
@@ -1317,9 +1314,6 @@ packages:
     resolution: {integrity: sha512-rUCObTnP32Q08R2uuIrt7r9PlEonuTmtuXYcW6s5kjdlj3xbnwe+21yXptAUYcMAABLkYYTtnmzb3w3EDZfueA==}
     engines: {node: '>=10'}
     hasBin: true
-
-  server-only@0.0.1:
-    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}
 
   siginfo@2.0.0:
     resolution: {integrity: sha512-ybx0WO1/8bSBLEWXZvEd7gMW3Sn3JFlW3TvX1nREbDLRNQNaeNN8WK0meBwPdAaOI7TtRRRJn/Es1zhrrCHu7g==}
@@ -2625,8 +2619,6 @@ snapshots:
       loose-envify: 1.4.0
 
   semver@7.8.4: {}
-
-  server-only@0.0.1: {}
 
   siginfo@2.0.0: {}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { slackSendNotification } from "./providers";
+import { slackSend } from "./providers";
 import { runAction, EngineContext } from "./engine/actions";
 
 describe("Slack Integration", () => {
@@ -10,7 +10,7 @@ describe("Slack Integration", () => {
     mockFetch.mockReset();
   });
 
-  describe("slackSendNotification provider", () => {
+  describe("slackSend provider", () => {
     it("should send a notification successfully", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -20,7 +20,7 @@ describe("Slack Integration", () => {
       const creds = { botToken: "xoxb-test", defaultChannel: "#general" };
       const params = { text: "Hello Slack!" };
 
-      const result = await slackSendNotification(creds, params);
+      const result = await slackSend(creds, params);
 
       expect(mockFetch).toHaveBeenCalledWith("https://slack.com/api/chat.postMessage", expect.objectContaining({
         method: "POST",
@@ -41,7 +41,7 @@ describe("Slack Integration", () => {
       const creds = { botToken: "xoxb-test", defaultChannel: "#general" };
       const params = { text: "Hello Slack!" };
 
-      await expect(slackSendNotification(creds, params)).rejects.toThrow("Slack API error: invalid_auth");
+      await expect(slackSend(creds, params)).rejects.toThrow("Slack error: invalid_auth");
     });
   });
 
@@ -57,9 +57,9 @@ describe("Slack Integration", () => {
         userId: "user-1",
         automationId: "auto-1",
         executionId: "exec-1",
-        integrations: {
+        getIntegrations: async () => ({
           slack: { botToken: "xoxb-test", defaultChannel: "#alerts" }
-        }
+        })
       };
 
       const action = {
@@ -83,7 +83,7 @@ describe("Slack Integration", () => {
         userId: "user-1",
         automationId: "auto-1",
         executionId: "exec-1",
-        integrations: {}
+        getIntegrations: async () => ({})
       };
 
       const action = {

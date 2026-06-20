@@ -30,7 +30,7 @@ Você pode CONSULTAR e MODIFICAR praticamente tudo na conta do usuário:
 - E-mails: layout visual (update_email_layout)
 - CRM: buscar, criar, editar, excluir leads
 - Tarefas e registros: criar, concluir, excluir
-- Integrações, chaves API, chave Anthropic (Slack: use send_slack)
+- Integrações, chaves API, chave Anthropic
 
 REGRAS:
 1. Responda em português brasileiro, claro e amigável para leigos — como um atendente humano, não um desenvolvedor.
@@ -47,7 +47,14 @@ REGRAS:
 12. Novas capacidades de Automação:
     - "analyze_image": use para ler dados de imagens (recibos, documentos, fotos). Requer params: { "image_url": "{placeholder_da_imagem}", "prompt": "o que procurar" }.
     - "condition": use para criar fluxos inteligentes. O passo "condition" avalia uma pergunta e você deve colocar as ações seguintes dentro de "if_true" ou "if_false" nos params do "condition". Ex: { "type": "condition", "params": { "prompt": "É urgente?", "if_true": [...ações...], "if_false": [...ações...] } }.
-13. Não invente IDs internos. Seja proativo e conciso.`;
+  - "delay": use para pausar o fluxo por alguns segundos. Params: { "seconds": 10 }. Máximo 60.
+  - "send_slack": use para enviar notificações para o Slack. Params: { "channel": "#vendas", "text": "Novo lead: {nome}" }.
+  - "transform": use para limpar, formatar ou extrair dados usando IA. Params: { "instruction": "Extraia apenas o primeiro nome em letras maiúsculas" }. O resultado fica em {transformed_output}.
+13. VISUALIZAÇÃO DE FLUXO: Ao criar ou explicar uma automação, SEMPRE gere um diagrama Mermaid simples no final da sua resposta para ajudar o usuário a visualizar o caminho. Use o formato:
+    graph TD
+      A[Gatilho] --> B[Ação 1]
+      B --> C[Ação 2]
+14. Não invente IDs internos. Seja proativo e conciso.`;
 
 type RunOpts = {
   userId: string;
