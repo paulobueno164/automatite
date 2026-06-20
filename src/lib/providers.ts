@@ -160,3 +160,23 @@ export async function slackSend(creds: Credentials, params: Params): Promise<Pro
   if (!json.ok) throw new Error(`Slack error: ${json.error}`);
   return { detail: `Mensagem enviada para o Slack (${channel})`, output: json };
 }
+
+/** Discord — envia mensagem para um canal via Webhook. */
+export async function discordSend(creds: Credentials, params: Params): Promise<ProviderResult> {
+  const url = str(params.webhookUrl || creds.webhookUrl);
+  const content = str(params.text || params.body);
+  if (!url) throw new Error("Webhook URL ausente");
+  if (!content) throw new Error("Mensagem (text) ausente");
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Discord error: ${res.status} ${await res.text()}`);
+  }
+
+  return { detail: `Mensagem enviada para o Discord`, output: { status: res.status } };
+}
