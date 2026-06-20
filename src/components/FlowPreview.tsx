@@ -56,6 +56,25 @@ export function FlowPreview({ flow }: { flow: Flow }) {
               <p className="text-sm font-medium">{action.label || ACTION_CATALOG[action.type]?.title || action.type}</p>
               <p className="text-xs text-slate-400">{ACTION_CATALOG[action.type]?.title ?? action.type}</p>
               <ActionSummary action={action} />
+
+              {action.type === "loop" && Array.isArray(action.params?.actions) && (
+                <div className="mt-4 border-l-2 border-slate-100 pl-4 space-y-2">
+                  <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Ações repetidas:</p>
+                  <ol className="space-y-2">
+                    {action.params.actions.map((subAction: Action, j: number) => (
+                      <li key={j} className="flex items-start gap-2 rounded-md border border-slate-100 bg-slate-50/50 p-2">
+                        <span className="mt-0.5 flex h-4 w-4 flex-none items-center justify-center rounded-full bg-white text-[10px] font-semibold text-slate-400 shadow-sm">
+                          {j + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium">{subAction.label || ACTION_CATALOG[subAction.type]?.title || subAction.type}</p>
+                          <ActionSummary action={subAction} />
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
           </li>
         ))}

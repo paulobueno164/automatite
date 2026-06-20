@@ -52,7 +52,12 @@ export async function runAutomation(
 
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const execution = await prisma.execution.create({
-    data: { automationId, status: "running", inputJson: JSON.stringify(payload) },
+    data: {
+      automationId,
+      status: "running",
+      inputJson: JSON.stringify(payload),
+      contextJson: JSON.stringify(payload),
+    },
   });
 
   await captureFormToCrm({
@@ -85,7 +90,11 @@ export async function runAutomation(
     ? "error"
     : "success";
 
-  const data: any = { status, logJson: JSON.stringify(steps) };
+  const data: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    contextJson: JSON.stringify(ctx.data),
+  };
   if (result.paused) {
     data.pausedPath = result.pausedPath;
     data.resumeToken = randomBytes(24).toString("hex");
@@ -114,7 +123,7 @@ function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
 }
 
 /**
- * Executa uma sequência de ações de forma recursiva (suporta branching).
+ * Executa uma sequência de ações de forma recursiva (suporta branching e loops).
  */
 async function runActionSequence(
   actions: Action[],
@@ -129,22 +138,52 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKey = parts[1]; // "if_true" | "if_false" | iterationIndex (for loops)
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    // Branching (condition)
+    if (action.type === "condition" && (branchKey === "if_true" || branchKey === "if_false")) {
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Looping (loop)
+    if (action.type === "loop") {
+      const loopActions = action.params?.actions;
+      const itemsParam = action.params?.items;
+      const resolvedItems = Array.isArray(itemsParam) ? itemsParam : (interpolate(itemsParam, ctx) as any[]);
+
+      if (Array.isArray(loopActions) && Array.isArray(resolvedItems)) {
+        const iterationIndex = parseInt(branchKey, 10);
+
+        for (let i = iterationIndex; i < resolvedItems.length; i++) {
+          const item = resolvedItems[i];
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = i;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps, {
+            resumePath: i === iterationIndex ? (remainingPath || undefined) : undefined,
+          });
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${i}.${subResult.pausedPath}` };
+          }
+        }
+        delete ctx.data.loop_item;
+        delete ctx.data.loop_index;
+      }
+    }
+
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -170,6 +209,28 @@ async function runActionSequence(
         }
       }
     }
+
+    // Se for um loop, itera sobre os itens.
+    if (action.type === "loop" && step.status === "success") {
+      const loopActions = action.params?.actions;
+      const itemsParam = action.params?.items;
+      const resolvedItems = Array.isArray(itemsParam) ? itemsParam : (interpolate(itemsParam, ctx) as any[]);
+
+      if (Array.isArray(loopActions) && Array.isArray(resolvedItems)) {
+        for (let j = 0; j < resolvedItems.length; j++) {
+          const item = resolvedItems[j];
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
+        }
+        delete ctx.data.loop_item;
+        delete ctx.data.loop_index;
+      }
+    }
   }
   return { paused: false };
 }
@@ -191,7 +252,7 @@ export async function resumeAutomation(
   if (execution.resumeToken !== resumeToken) throw new Error("Token de aprovação inválido");
 
   const automation = execution.automation;
-  const payload = JSON.parse(execution.inputJson);
+  const context = execution.contextJson ? JSON.parse(execution.contextJson) : JSON.parse(execution.inputJson);
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const steps: ExecutionStep[] = JSON.parse(execution.logJson);
 
@@ -205,7 +266,7 @@ export async function resumeAutomation(
 
   let cachedIntegrations: Record<string, any> | null = null;
   const ctx = {
-    data: { ...payload },
+    data: { ...context },
     userId: automation.userId,
     automationId: automation.id,
     executionId: execution.id,
@@ -229,7 +290,11 @@ export async function resumeAutomation(
     ? "error"
     : "success";
 
-  const updateData: any = { status, logJson: JSON.stringify(steps) };
+  const updateData: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    contextJson: JSON.stringify(ctx.data),
+  };
   if (result.paused) {
     updateData.pausedPath = result.pausedPath;
     updateData.resumeToken = randomBytes(24).toString("hex");
@@ -290,4 +355,27 @@ export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: nu
   }
 
   return { ran: ids.length, ids };
+}
+
+/**
+ * Busca um valor no objeto usando dot-notation (ex: "user.name").
+ */
+function getByPath(obj: Record<string, any>, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+}
+
+/** Import local para suporte a loop (evita circular se estivesse em actions.ts) */
+function interpolate(value: unknown, ctx: EngineContext): unknown {
+  if (typeof value === "string") {
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getByPath(ctx.data, exactMatch[1]);
+      return v !== undefined && v !== null ? v : value;
+    }
+    return value.replace(/\{([\w.]+)\}/g, (_, key) => {
+      const v = getByPath(ctx.data, key);
+      return v === undefined || v === null ? `{${key}}` : String(v);
+    });
+  }
+  return value;
 }

@@ -28,11 +28,25 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/**
+ * Busca um valor no objeto usando dot-notation (ex: "user.name").
+ */
+function getByPath(obj: Record<string, any>, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
 function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se for EXATAMENTE um placeholder "{key}", retorna o valor original (preserva tipo)
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getByPath(ctx.data, exactMatch[1]);
+      return v !== undefined && v !== null ? v : value;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getByPath(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
@@ -248,7 +262,17 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           headers: { "Content-Type": "application/json" },
           body: method === "GET" ? undefined : JSON.stringify(params.body ?? ctx.data),
         });
-        return ok(action, label, `HTTP ${method} ${url} → ${res.status}`, { status: res.status });
+
+        let body: any = null;
+        const contentType = res.headers.get("content-type");
+        if (contentType?.includes("application/json")) {
+          body = await res.json();
+        } else {
+          body = await res.text();
+        }
+
+        ctx.data.http_response = body;
+        return ok(action, label, `HTTP ${method} ${url} → ${res.status}`, { status: res.status, body });
       }
 
       case "ai_generate": {
@@ -380,6 +404,14 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        const items = params.items;
+        if (!Array.isArray(items)) {
+          return fail(action, label, `O campo "items" deve ser uma lista (array), mas é ${typeof items}`);
+        }
+        return ok(action, label, `Iniciando loop com ${items.length} itens`, { count: items.length });
       }
 
       default:
