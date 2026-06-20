@@ -135,6 +135,7 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
       }
 
       case "send_slack": {
+        const integ = await ctx.getIntegrations();
         const creds = integ.slack;
         if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
         const r = await slackSend(creds, params);
