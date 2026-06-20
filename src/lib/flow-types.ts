@@ -29,6 +29,7 @@ export const ActionTypeEnum = z.enum([
   "condition", // ramificação condicional inteligente com IA
   "delay", // aguarda um tempo antes de continuar
   "send_slack", // envia mensagem para o Slack
+  "send_discord", // envia mensagem para o Discord
   "transform", // transforma dados usando IA
   "wait_for_approval", // pausa a execução até aprovação manual
   "log", // apenas registra uma mensagem
@@ -77,6 +78,7 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   condition: { title: "Condição (IA)", description: "Decide qual caminho seguir baseado em uma pergunta para a IA." },
   delay: { title: "Aguardar", description: "Pausa a execução por alguns segundos ou minutos." },
   send_slack: { title: "Enviar Slack", description: "Envia uma mensagem para um canal ou usuário no Slack." },
+  send_discord: { title: "Enviar Discord", description: "Envia uma mensagem para um canal via Webhook no Discord." },
   transform: { title: "Transformar (IA)", description: "Usa a IA para formatar, limpar ou extrair dados." },
   wait_for_approval: { title: "Aguardar Aprovação", description: "Pausa o fluxo até que você aprove manualmente (via e-mail ou painel)." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },

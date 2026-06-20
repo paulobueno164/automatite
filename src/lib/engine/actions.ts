@@ -4,6 +4,7 @@ import { Action, ExecutionStep } from "../flow-types";
 import { Credentials } from "../provider-catalog";
 import {
   asanaCreateTask,
+  discordSend,
   googleSheetsAppend,
   pipedriveCreateTask,
   slackSend,
@@ -139,6 +140,16 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         const creds = integ.slack;
         if (!creds) return fail(action, label, "Slack não conectado — configure em Configurações → Integrações");
         const r = await slackSend(creds, params);
+        return ok(action, label, r.detail, r.output);
+      }
+
+      case "send_discord": {
+        const integ = await ctx.getIntegrations();
+        const creds = integ.discord;
+        if (!creds && !params.webhookUrl) {
+          return fail(action, label, "Discord não conectado — configure em Configurações → Integrações");
+        }
+        const r = await discordSend(creds ?? {}, params);
         return ok(action, label, r.detail, r.output);
       }
 
