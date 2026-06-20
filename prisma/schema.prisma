@@ -86,13 +86,16 @@ model Execution {
   id           String     @id @default(cuid())
   automationId String
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  // "success" | "error" | "running"
+  // "success" | "error" | "running" | "paused"
   status       String     @default("running")
   inputJson    String     @default("{}")
   logJson      String     @default("[]")
+  pausedPath   String?
+  resumeToken  String?
   createdAt    DateTime   @default(now())
 
   @@index([automationId])
+  @@index([resumeToken])
   @@index([createdAt])
 }
 
