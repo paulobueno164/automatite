@@ -28,16 +28,19 @@ function normPhone(v?: string) {
   return s || null;
 }
 
+/**
+ * Optimized lead lookup: Uses a single query with OR condition to find an existing lead
+ * by email or phone, reducing DB round-trips from 2 to 1.
+ */
 async function findExistingLead(userId: string, email: string | null, phone: string | null) {
-  if (email) {
-    const byEmail = await prisma.lead.findFirst({ where: { userId, email } });
-    if (byEmail) return byEmail;
-  }
-  if (phone) {
-    const byPhone = await prisma.lead.findFirst({ where: { userId, phone } });
-    if (byPhone) return byPhone;
-  }
-  return null;
+  if (!email && !phone) return null;
+
+  return prisma.lead.findFirst({
+    where: {
+      userId,
+      OR: [...(email ? [{ email }] : []), ...(phone ? [{ phone }] : [])],
+    },
+  });
 }
 
 export async function addLeadEvent(opts: {
