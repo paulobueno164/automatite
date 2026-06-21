@@ -29,10 +29,21 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se o placeholder for EXATAMENTE uma chave (ex: "{minha_lista}"),
+    // e o valor no contexto for um objeto/array, retornamos o valor original sem converter p/ string.
+    const directMatch = value.match(/^\{([\w.]+)\}$/);
+    if (directMatch) {
+      const key = directMatch[1];
+      const v = getDeepValue(ctx.data, key);
+      if (v !== undefined && v !== null && typeof v === "object") {
+        return v;
+      }
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getDeepValue(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
@@ -43,6 +54,11 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
     );
   }
   return value;
+}
+
+/** Acessa valores aninhados usando notação de ponto (ex: "user.name"). */
+export function getDeepValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
 }
 
 /**
@@ -380,6 +396,22 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        let items = params.items;
+        if (typeof items === "string") {
+          try {
+            items = JSON.parse(items);
+          } catch {
+            // Se não for JSON válido, tenta pegar do contexto se for placeholder
+            // Mas interpolate já deve ter resolvido se for {placeholder}
+          }
+        }
+        if (!Array.isArray(items)) {
+          return fail(action, label, "O parâmetro 'items' deve ser uma lista (array)");
+        }
+        return ok(action, label, `Iniciando repetição sobre ${items.length} itens`, { count: items.length, items });
       }
 
       default:

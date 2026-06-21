@@ -5,7 +5,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction, EngineContext } from "./actions";
+import { runAction, EngineContext, interpolate } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -116,7 +116,7 @@ function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
 /**
  * Executa uma sequência de ações de forma recursiva (suporta branching).
  */
-async function runActionSequence(
+export async function runActionSequence(
   actions: Action[],
   ctx: EngineContext,
   steps: ExecutionStep[],
@@ -126,25 +126,55 @@ async function runActionSequence(
 
   // Se temos um resumePath, precisamos navegar até o nível correto.
   // Formato: "index.branchKey.index.branchKey..."
+  // Para loops: "index.iterationIndex.subIndex..."
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKeyOrIteration = parts[1];
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchKey = branchKeyOrIteration;
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const iterationIndex = parseInt(branchKeyOrIteration, 10);
+      const actualItems = getLoopItems(action, ctx);
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(loopActions)) {
+        for (let j = iterationIndex; j < actualItems.length; j++) {
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+
+          ctx.data.loop_item = actualItems[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps, {
+            resumePath: j === iterationIndex ? remainingPath || undefined : undefined,
+          });
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+
+          // Restaura o contexto anterior para suportar loops aninhados
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo ou loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -170,8 +200,50 @@ async function runActionSequence(
         }
       }
     }
+
+    // Se for um loop, itera sobre os itens e executa as sub-ações.
+    if (action.type === "loop" && step.status === "success") {
+      const actualItems = getLoopItems(action, ctx);
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(loopActions) && loopActions.length > 0) {
+        for (let j = 0; j < actualItems.length; j++) {
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+
+          ctx.data.loop_item = actualItems[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
+
+          // Restaura o contexto anterior para suportar loops aninhados
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+        }
+      }
+    }
   }
   return { paused: false };
+}
+
+/** Extrai a lista de itens para o loop, resolvendo placeholders e JSON. */
+function getLoopItems(action: Action, ctx: EngineContext): any[] {
+  const rawItems = action.params?.items;
+  const items = interpolate(rawItems, ctx);
+
+  if (Array.isArray(items)) return items;
+  if (typeof items === "string") {
+    try {
+      const parsed = JSON.parse(items);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 /**
