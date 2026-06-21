@@ -34,6 +34,7 @@ export function ActionConfigForm({
         return (
           <div key={field.key} id={`action-${actionIndex}-field-${field.key}`} className="scroll-mt-28">
             <FieldInput
+              id={`input-${actionIndex}-${field.key}`}
               field={field}
               value={value}
               required={required}
@@ -48,12 +49,14 @@ export function ActionConfigForm({
 }
 
 function FieldInput({
+  id,
   field,
   value,
   required,
   showWarning,
   onChange,
 }: {
+  id: string;
   field: { key: string; label: string; type: string; placeholder?: string; hint?: string; options?: { value: string; label: string }[] };
   value: string;
   required: boolean;
@@ -61,7 +64,7 @@ function FieldInput({
   onChange: (value: string) => void;
 }) {
   const label = (
-    <label className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-700">
+    <label htmlFor={id} className="mb-1 flex items-center gap-2 text-xs font-medium text-slate-700">
       <span>{field.label}</span>
       {required ? (
         <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
@@ -79,7 +82,7 @@ function FieldInput({
     return (
       <div>
         {label}
-        <select className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
+        <select id={id} className={inputClass} value={value} onChange={(e) => onChange(e.target.value)}>
           {field.options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -95,7 +98,7 @@ function FieldInput({
     return (
       <div>
         {label}
-        <textarea className={`${inputClass} min-h-[80px]`} placeholder={field.placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
+        <textarea id={id} className={`${inputClass} min-h-[80px]`} placeholder={field.placeholder} value={value} onChange={(e) => onChange(e.target.value)} />
         {showWarning && <p className="mt-1 text-xs text-amber-700">Este campo é necessário para esta etapa funcionar.</p>}
         {field.hint && <p className="mt-1 text-xs text-slate-400">{field.hint}</p>}
       </div>
@@ -106,6 +109,7 @@ function FieldInput({
     <div>
       {label}
       <input
+        id={id}
         type={field.type === "email" ? "email" : field.type === "url" ? "url" : "text"}
         className={inputClass}
         placeholder={field.placeholder}
