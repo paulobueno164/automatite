@@ -5,7 +5,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction, EngineContext } from "./actions";
+import { runAction, EngineContext, interpolate } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -101,6 +101,30 @@ export async function runAutomation(
   return { executionId: execution.id, status, steps, userId: automation.userId };
 }
 
+/**
+ * Resolve e faz o parse da lista de itens para o loop.
+ * Suporta JSON array, lista separada por vírgula ou objeto/array direto.
+ */
+function getLoopItems(itemsRaw: unknown, ctx: EngineContext): any[] {
+  const items = interpolate(itemsRaw, ctx);
+
+  if (Array.isArray(items)) return items;
+
+  if (typeof items === "string") {
+    const trimmed = items.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return [];
+      }
+    }
+    return trimmed ? trimmed.split(",").map((i) => i.trim()) : [];
+  }
+
+  return [];
+}
+
 /** Notificação simulada de aprovação */
 function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
   const lastStep = steps[steps.length - 1];
@@ -129,22 +153,55 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKey = parts[1]; // "if_true" | "if_false" | "loop_iteration"
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (branchKey === "loop_iteration") {
+      const iterationIndex = parseInt(parts[2], 10);
+      const subRemainingPath = parts.slice(3).join(".");
+      const loopItems = getLoopItems(action.params?.items, ctx);
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions)) {
+        // Continua a iteração que estava pausada
+        const originalLoopItem = ctx.data.loop_item;
+        const originalLoopIndex = ctx.data.loop_index;
+
+        for (let j = iterationIndex; j < loopItems.length; j++) {
+          ctx.data.loop_item = loopItems[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps, {
+            resumePath: j === iterationIndex ? subRemainingPath || undefined : undefined,
+          });
+
+          if (subResult.paused) {
+            ctx.data.loop_item = originalLoopItem;
+            ctx.data.loop_index = originalLoopIndex;
+            return {
+              paused: true,
+              pausedPath: `${currentIndex}.loop_iteration.${j}.${subResult.pausedPath}`,
+            };
+          }
+        }
+        ctx.data.loop_item = originalLoopItem;
+        ctx.data.loop_index = originalLoopIndex;
+      }
+    } else {
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo ou loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -168,6 +225,31 @@ async function runActionSequence(
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
         }
+      }
+    }
+
+    // Se for um loop, executa para cada item.
+    if (action.type === "loop") {
+      const loopItems = getLoopItems(action.params?.items, ctx);
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions) && loopItems.length > 0) {
+        const originalLoopItem = ctx.data.loop_item;
+        const originalLoopIndex = ctx.data.loop_index;
+
+        for (let j = 0; j < loopItems.length; j++) {
+          ctx.data.loop_item = loopItems[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps);
+          if (subResult.paused) {
+            ctx.data.loop_item = originalLoopItem;
+            ctx.data.loop_index = originalLoopIndex;
+            return { paused: true, pausedPath: `${i}.loop_iteration.${j}.${subResult.pausedPath}` };
+          }
+        }
+        ctx.data.loop_item = originalLoopItem;
+        ctx.data.loop_index = originalLoopIndex;
       }
     }
   }

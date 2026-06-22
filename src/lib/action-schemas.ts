@@ -178,6 +178,11 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
+  loop: {
+    fields: [
+      { key: "items", label: "Itens para repetir", type: "text", placeholder: "{minha_lista}", hint: "Uma lista JSON, valores separados por vírgula ou uma variável de lista." },
+    ],
+  },
 };
 
 /** Valores padrão ao criar ou trocar o tipo de uma ação. */
@@ -198,6 +203,7 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   transform: { instruction: "" },
   wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
   log: { message: "" },
+  loop: { items: "" },
 };
 
 export function getActionSchema(type: ActionType): ActionSchema {
