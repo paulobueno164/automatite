@@ -28,11 +28,22 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+function getDeepValue(obj: Record<string, any>, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se for EXATAMENTE um placeholder (ex: "{lista}"), preservamos o tipo original (array/objeto)
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getDeepValue(ctx.data, exactMatch[1]);
+      return v === undefined || v === null ? value : v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getDeepValue(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
