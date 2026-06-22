@@ -129,16 +129,16 @@ export function FlowEditor({
 
       <div className="card space-y-3">
         <div>
-          <label className="mb-1 block text-sm font-medium">Nome</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+          <label htmlFor="flow-name" className="mb-1 block text-sm font-medium">Nome</label>
+          <input id="flow-name" className="input" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Descrição</label>
-          <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <label htmlFor="flow-description" className="mb-1 block text-sm font-medium">Descrição</label>
+          <input id="flow-description" className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Categoria</label>
-          <input className="input" value={category} onChange={(e) => setCategory(e.target.value)} />
+          <label htmlFor="flow-category" className="mb-1 block text-sm font-medium">Categoria</label>
+          <input id="flow-category" className="input" value={category} onChange={(e) => setCategory(e.target.value)} />
         </div>
       </div>
 
