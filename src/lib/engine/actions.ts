@@ -28,11 +28,23 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/** Busca valor em objeto aninhado usando dot-notation (ex: "user.name") */
+function getDeepValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => acc?.[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for EXATAMENTE um placeholder (ex: "{my_array}"), retornamos o valor original (Array/Object)
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getDeepValue(ctx.data, exactMatch[1]);
+      if (v !== undefined && v !== null) return v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getDeepValue(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
@@ -380,6 +392,10 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        return ok(action, label, "Iniciando repetição");
       }
 
       default:
