@@ -16,7 +16,12 @@ export function LeadStatusSelect({ leadId, status }: { leadId: string; status: s
   }
 
   return (
-    <select className="input w-auto text-sm" value={status} onChange={(e) => change(e.target.value)}>
+    <select
+      aria-label="Alterar status do contato"
+      className="input w-auto text-sm"
+      value={status}
+      onChange={(e) => change(e.target.value)}
+    >
       {LEAD_STATUSES.map((s) => (
         <option key={s.value} value={s.value}>
           {s.label}
