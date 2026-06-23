@@ -28,11 +28,27 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/**
+ * Helper para acessar valores profundos em um objeto usando dot-notation (ex: "user.name").
+ */
+function getDeepValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for EXATAMENTE um placeholder (ex: "{minha_lista}"),
+    // tentamos retornar o valor original (que pode ser Array ou Objeto)
+    // sem converter para string.
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getDeepValue(ctx.data, exactMatch[1]);
+      if (v !== undefined) return v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getDeepValue(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
@@ -53,6 +69,10 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
 export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
+
+  // Se a ação for um log, garante que salvamos o estado atual no contexto global se necessário
+  // mas o runActionSequence já gerencia o loop_item/loop_index.
+  // IMPORTANTE: Algumas ações podem querer salvar outputs no ctx.data.
 
   try {
     switch (action.type) {

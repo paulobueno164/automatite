@@ -5,7 +5,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction, EngineContext } from "./actions";
+import { runAction, EngineContext, interpolate } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -85,7 +85,7 @@ export async function runAutomation(
     ? "error"
     : "success";
 
-  const data: any = { status, logJson: JSON.stringify(steps) };
+  const data: any = { status, logJson: JSON.stringify(steps), contextJson: JSON.stringify(ctx.data) };
   if (result.paused) {
     data.pausedPath = result.pausedPath;
     data.resumeToken = randomBytes(24).toString("hex");
@@ -114,7 +114,24 @@ function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
 }
 
 /**
- * Executa uma sequência de ações de forma recursiva (suporta branching).
+ * Helper para extrair a lista de itens de uma ação de loop.
+ */
+function getLoopItems(itemsParam: unknown): unknown[] {
+  if (Array.isArray(itemsParam)) return itemsParam;
+  if (typeof itemsParam === "string") {
+    try {
+      const parsed = JSON.parse(itemsParam);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      // Se não for JSON, tenta split por vírgula se for uma lista simples
+      return itemsParam.split(",").map((s) => s.trim());
+    }
+  }
+  return [];
+}
+
+/**
+ * Executa uma sequência de ações de forma recursiva (suporta branching e loops).
  */
 async function runActionSequence(
   actions: Action[],
@@ -125,31 +142,91 @@ async function runActionSequence(
   const { startIndex = 0, resumePath } = options;
 
   // Se temos um resumePath, precisamos navegar até o nível correto.
-  // Formato: "index.branchKey.index.branchKey..."
+  // Formato: "index.branchKey.index.branchKey..." ou "index.iteration.subindex"
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
-    const remainingPath = parts.slice(2).join(".");
-
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchKey = parts[1]; // "if_true" | "if_false"
+      const remainingPath = parts.slice(2).join(".");
+      const branchActions = action.params?.[branchKey];
+
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const iterationIndex = parseInt(parts[1], 10);
+      const remainingPath = parts.slice(2).join(".");
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(loopActions)) {
+        const items = getLoopItems(interpolate(action.params?.items, ctx));
+
+        // Preserva o estado de loop atual para evitar vazamento em loops aninhados
+        const oldItem = ctx.data.loop_item;
+        const oldIndex = ctx.data.loop_index;
+
+        for (let j = iterationIndex; j < items.length; j++) {
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps, {
+            resumePath: j === iterationIndex ? remainingPath || undefined : undefined,
+          });
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
+
+        // Restaura estado anterior
+        ctx.data.loop_item = oldItem;
+        ctx.data.loop_index = oldIndex;
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
   for (let i = startIndex; i < actions.length; i++) {
     const action = actions[i];
+
+    // Lógica especial para loop no runActionSequence para gerenciar recursão e contexto
+    if (action.type === "loop") {
+      const loopActions = action.params?.actions;
+      if (Array.isArray(loopActions) && loopActions.length > 0) {
+        const items = getLoopItems(interpolate(action.params?.items, ctx));
+
+        const oldItem = ctx.data.loop_item;
+        const oldIndex = ctx.data.loop_index;
+
+        for (let j = 0; j < items.length; j++) {
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          // Debug: console.log("Loop iteration", j, "item", items[j]);
+
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
+        }
+
+        ctx.data.loop_item = oldItem;
+        ctx.data.loop_index = oldIndex;
+      }
+      // Registra o sucesso do loop como um todo (opcional, aqui apenas prossegue)
+      continue;
+    }
+
     const step = await runAction(action, ctx);
     steps.push(step);
 
@@ -194,6 +271,7 @@ export async function resumeAutomation(
   const payload = JSON.parse(execution.inputJson);
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const steps: ExecutionStep[] = JSON.parse(execution.logJson);
+  const savedContext = JSON.parse(execution.contextJson || "{}");
 
   // Marca o passo de pausa como sucesso para continuar
   // Procuramos o último passo que está como 'paused'
@@ -205,7 +283,7 @@ export async function resumeAutomation(
 
   let cachedIntegrations: Record<string, any> | null = null;
   const ctx = {
-    data: { ...payload },
+    data: { ...savedContext },
     userId: automation.userId,
     automationId: automation.id,
     executionId: execution.id,
@@ -229,7 +307,11 @@ export async function resumeAutomation(
     ? "error"
     : "success";
 
-  const updateData: any = { status, logJson: JSON.stringify(steps) };
+  const updateData: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    contextJson: JSON.stringify(ctx.data),
+  };
   if (result.paused) {
     updateData.pausedPath = result.pausedPath;
     updateData.resumeToken = randomBytes(24).toString("hex");
