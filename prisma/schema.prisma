@@ -90,6 +90,7 @@ model Execution {
   status       String     @default("running")
   inputJson    String     @default("{}")
   logJson      String     @default("[]")
+  contextJson  String     @default("{}")
   pausedPath   String?
   resumeToken  String?    @unique
   createdAt    DateTime   @default(now())
