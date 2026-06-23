@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resumeAutomation } from "@/lib/engine";
+import { escapeHtml } from "@/lib/email-template";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -20,6 +21,8 @@ export async function GET(req: NextRequest) {
       return new NextResponse("Link de aprovação inválido ou já utilizado.", { status: 404 });
     }
 
+    // Security: We use escapeHtml to prevent XSS when rendering user-controlled
+    // data (automation name) or untrusted input (token) into a raw HTML response.
     // Renderiza uma página de confirmação simples para evitar gatilhos acidentais por scanners de e-mail
     return new NextResponse(`
       <html>
@@ -32,10 +35,10 @@ export async function GET(req: NextRequest) {
         <body class="bg-slate-50 flex items-center justify-center min-h-screen p-4">
           <div class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 max-w-md w-full text-center">
             <h1 class="text-xl font-bold text-slate-900 mb-2">Confirmar Aprovação</h1>
-            <p class="text-slate-600 mb-6 text-sm">Você está prestes a aprovar a execução da automação: <br><strong>${execution.automation.name}</strong></p>
+            <p class="text-slate-600 mb-6 text-sm">Você está prestes a aprovar a execução da automação: <br><strong>${escapeHtml(execution.automation.name)}</strong></p>
 
             <form action="/api/approve" method="POST">
-                <input type="hidden" name="token" value="${token}">
+                <input type="hidden" name="token" value="${escapeHtml(token)}">
                 <button type="submit" class="w-full bg-brand-600 text-white rounded-lg px-4 py-2 font-medium hover:bg-brand-700 transition-colors bg-[#635BFF]">
                     Sim, aprovar agora
                 </button>
