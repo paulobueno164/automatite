@@ -28,11 +28,24 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/** Busca um valor em um objeto usando notação de ponto (ex: "user.name"). */
+function getDeepValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se for um placeholder único e exato, preserva o tipo original (Array, Object, etc.)
+    const singleMatch = value.match(/^\{([\w.]+)\}$/);
+    if (singleMatch) {
+      const key = singleMatch[1];
+      const v = getDeepValue(ctx.data, key);
+      return v === undefined || v === null ? value : v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
+      const v = getDeepValue(ctx.data, key);
       return v === undefined || v === null ? `{${key}}` : String(v);
     });
   }
@@ -58,6 +71,9 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
     switch (action.type) {
       case "log":
         return ok(action, label, String(params.message ?? "(sem mensagem)"));
+
+      case "loop":
+        return ok(action, label, `Iniciando loop sobre ${params.items}`);
 
       case "delay": {
         const seconds = Math.min(Number(params.seconds ?? 5), 60); // Máximo 60s para evitar timeout do worker
