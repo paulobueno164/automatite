@@ -5,7 +5,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction, EngineContext } from "./actions";
+import { runAction, EngineContext, interpolate } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -85,7 +85,11 @@ export async function runAutomation(
     ? "error"
     : "success";
 
-  const data: any = { status, logJson: JSON.stringify(steps) };
+  const data: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    contextJson: JSON.stringify(ctx.data),
+  };
   if (result.paused) {
     data.pausedPath = result.pausedPath;
     data.resumeToken = randomBytes(24).toString("hex");
@@ -99,6 +103,25 @@ export async function runAutomation(
   });
 
   return { executionId: execution.id, status, steps, userId: automation.userId };
+}
+
+/** Extrai a lista de itens para o loop, suportando JSON array ou strings separadas por vírgula. */
+function getLoopItems(params: Record<string, unknown>, ctx: EngineContext): any[] {
+  const rawItems = interpolate(params.items, ctx);
+  if (Array.isArray(rawItems)) return rawItems;
+  if (typeof rawItems === "string") {
+    const trimmed = rawItems.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Fallback para string normal
+      }
+    }
+    return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
 }
 
 /** Notificação simulada de aprovação */
@@ -133,14 +156,42 @@ async function runActionSequence(
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "loop") {
+      const iterationIndex = parseInt(branchKey, 10);
+      const subActionPath = remainingPath;
+      const items = getLoopItems(action.params || {}, ctx);
+
+      // Salva valores anteriores para evitar vazamento
+      const prevItem = ctx.data.loop_item;
+      const prevIndex = ctx.data.loop_index;
+
+      for (let j = iterationIndex; j < items.length; j++) {
+        ctx.data.loop_item = items[j];
+        ctx.data.loop_index = j;
+
+        const subActions = (action.params?.actions as Action[]) || [];
+        const subResult = await runActionSequence(subActions, ctx, steps, {
+          resumePath: j === iterationIndex ? subActionPath : undefined,
+        });
+
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+        }
+      }
+
+      // Restaura valores anteriores
+      ctx.data.loop_item = prevItem;
+      ctx.data.loop_index = prevIndex;
+    } else {
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
       }
     }
 
@@ -155,6 +206,28 @@ async function runActionSequence(
 
     if (step.status === "paused") {
       return { paused: true, pausedPath: String(i) };
+    }
+
+    // Se for um loop, itera sobre os itens.
+    if (action.type === "loop" && step.status === "success") {
+      const items = getLoopItems(action.params || {}, ctx);
+      const prevItem = ctx.data.loop_item;
+      const prevIndex = ctx.data.loop_index;
+
+      for (let j = 0; j < items.length; j++) {
+        ctx.data.loop_item = items[j];
+        ctx.data.loop_index = j;
+
+        const subActions = (action.params?.actions as Action[]) || [];
+        const subResult = await runActionSequence(subActions, ctx, steps);
+
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+        }
+      }
+
+      ctx.data.loop_item = prevItem;
+      ctx.data.loop_index = prevIndex;
     }
 
     // Se for uma condição e tiver ramos, executa o ramo correspondente.
@@ -192,6 +265,7 @@ export async function resumeAutomation(
 
   const automation = execution.automation;
   const payload = JSON.parse(execution.inputJson);
+  const savedContext = JSON.parse(execution.contextJson || "{}");
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const steps: ExecutionStep[] = JSON.parse(execution.logJson);
 
@@ -205,7 +279,7 @@ export async function resumeAutomation(
 
   let cachedIntegrations: Record<string, any> | null = null;
   const ctx = {
-    data: { ...payload },
+    data: { ...payload, ...savedContext },
     userId: automation.userId,
     automationId: automation.id,
     executionId: execution.id,
@@ -229,7 +303,11 @@ export async function resumeAutomation(
     ? "error"
     : "success";
 
-  const updateData: any = { status, logJson: JSON.stringify(steps) };
+  const updateData: any = {
+    status,
+    logJson: JSON.stringify(steps),
+    contextJson: JSON.stringify(ctx.data),
+  };
   if (result.paused) {
     updateData.pausedPath = result.pausedPath;
     updateData.resumeToken = randomBytes(24).toString("hex");

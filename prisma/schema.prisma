@@ -89,6 +89,7 @@ model Execution {
   // "success" | "error" | "running" | "waiting"
   status       String     @default("running")
   inputJson    String     @default("{}")
+  contextJson  String     @default("{}")
   logJson      String     @default("[]")
   pausedPath   String?
   resumeToken  String?    @unique

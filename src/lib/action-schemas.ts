@@ -175,6 +175,11 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
       { key: "subject", label: "Assunto do e-mail", type: "text", placeholder: "Aprovação necessária: {nome}" },
     ],
   },
+  loop: {
+    fields: [
+      { key: "items", label: "Itens para iterar", type: "text", placeholder: "{minha_lista}", hint: "Uma lista (array) ou string separada por vírgulas." },
+    ],
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -197,6 +202,7 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   send_discord: { text: "" },
   transform: { instruction: "" },
   wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
+  loop: { items: "", actions: [] },
   log: { message: "" },
 };
 
