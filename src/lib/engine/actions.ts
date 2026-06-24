@@ -17,6 +17,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 import { isSafeUrl } from "../security";
+import { getLoopItems } from "./index";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -29,7 +30,7 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
       const v = ctx.data[key];
@@ -47,10 +48,22 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
 
 /**
  * Executa uma única ação e retorna o passo de log.
- * Cada ação tenta a integração real quando há credencial conectada; senão,
- * cai em modo mock (registra no log sem chamar o serviço externo).
  */
 export async function runAction(action: Action, ctx: EngineContext): Promise<ExecutionStep> {
+  const label = action.label || action.type;
+
+  try {
+    const step = await executeActionWithRetry(action, ctx);
+    return step;
+  } catch (err) {
+    return fail(action, label, err instanceof Error ? err.message : String(err));
+  }
+}
+
+/**
+ * Tenta executar a ação. Se falhar, invoca a IA para tentar "curar" os parâmetros e tenta novamente.
+ */
+async function executeActionWithRetry(action: Action, ctx: EngineContext, isRetry = false): Promise<ExecutionStep> {
   const params = interpolate(action.params ?? {}, ctx) as Record<string, unknown>;
   const label = action.label || action.type;
 
@@ -382,11 +395,56 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         };
       }
 
+      case "loop": {
+        const items = getLoopItems(params.items);
+        return ok(action, label, `Iniciando repetição com ${items.length} itens`, { items });
+      }
+
       default:
         return fail(action, label, `Ação desconhecida: ${action.type}`);
     }
   } catch (err) {
-    return fail(action, label, err instanceof Error ? err.message : String(err));
+    if (isRetry || !ctx.apiKey || action.type === "ai_generate" || action.type === "condition" || action.type === "transform") {
+      throw err;
+    }
+
+    console.log(`[SELF-HEALING] Ação ${action.type} falhou: ${err instanceof Error ? err.message : err}. Tentando auto-correção...`);
+
+    try {
+      const client = new Anthropic({ apiKey: ctx.apiKey });
+      const healingPrompt = `A ação "${action.type}" falhou com o erro: "${err instanceof Error ? err.message : err}".
+Os parâmetros enviados foram: ${JSON.stringify(params)}
+Os dados disponíveis no contexto são: ${JSON.stringify(ctx.data)}
+
+Sua tarefa é analisar o erro e os dados e sugerir novos parâmetros que corrijam o problema (ex: ajustar um nome de campo, formatar um dado, corrigir uma URL).
+Retorne APENAS um objeto JSON com os novos parâmetros para a ação. Se não for possível corrigir, retorne exatamente: {"error": "unfixable"}`;
+
+      const resp = await client.messages.create({
+        model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+        max_tokens: 500,
+        messages: [{ role: "user", content: healingPrompt }],
+      });
+
+      const out = resp.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+
+      const match = out.match(/\{[\s\S]*\}/);
+      if (match) {
+        const fixedParams = JSON.parse(match[0]);
+        if (fixedParams.error !== "unfixable") {
+          console.log(`[SELF-HEALING] IA sugeriu novos parâmetros: ${JSON.stringify(fixedParams)}`);
+          const retryStep = await executeActionWithRetry({ ...action, params: fixedParams }, ctx, true);
+          retryStep.detail = `[Auto-corrigido pela IA] ${retryStep.detail}`;
+          return retryStep;
+        }
+      }
+    } catch (healingErr) {
+      console.error("[SELF-HEALING] Falha crítica na auto-correção:", healingErr);
+    }
+
+    throw err;
   }
 }
 
