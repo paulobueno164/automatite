@@ -29,6 +29,18 @@ function ActionSummary({ action }: { action: Action }) {
           </dd>
         </div>
       ))}
+      {action.type === "loop" && Array.isArray(params.actions) && (
+        <div className="mt-2 border-l-2 border-brand-200 pl-3">
+          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-1">Ações do Loop</p>
+          <ol className="space-y-2">
+            {params.actions.map((subAction: Action, si: number) => (
+              <li key={si} className="text-xs">
+                <span className="font-medium text-slate-600">{si + 1}.</span> {subAction.label || ACTION_CATALOG[subAction.type]?.title || subAction.type}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
     </dl>
   );
 }

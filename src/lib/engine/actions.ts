@@ -29,7 +29,7 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
       const v = ctx.data[key];
@@ -380,6 +380,12 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        const items = params.items;
+        if (!items) return fail(action, label, "Lista de itens (items) ausente");
+        return ok(action, label, "Iniciando repetição");
       }
 
       default:
