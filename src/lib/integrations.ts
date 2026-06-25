@@ -11,11 +11,23 @@ export async function loadUserIntegrations(userId: string): Promise<Record<strin
   const rows = await prisma.integration.findMany({ where: { userId } });
   const map: Record<string, Credentials> = {};
   for (const row of rows) {
-    try {
-      map[row.provider] = decryptJson<Credentials>(row.dataEnc);
-    } catch {
-      // credencial corrompida (ex.: ENCRYPTION_KEY mudou) — ignora
-    }
+    // Bolt: Use Object.defineProperty to implement lazy decryption.
+    // This avoids CPU-intensive AES decryption and JSON parsing for integrations that aren't used in the current flow.
+    Object.defineProperty(map, row.provider, {
+      get: () => {
+        try {
+          const decrypted = decryptJson<Credentials>(row.dataEnc);
+          // Memoize the result so it's only decrypted once.
+          Object.defineProperty(map, row.provider, { value: decrypted, enumerable: true });
+          return decrypted;
+        } catch {
+          // credencial corrompida (ex.: ENCRYPTION_KEY mudou) — ignora
+          return undefined;
+        }
+      },
+      configurable: true,
+      enumerable: true,
+    });
   }
   return map;
 }
