@@ -5,16 +5,21 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from "crypt
  * A chave vem de ENCRYPTION_KEY (32 bytes em hex). Se ausente, deriva uma chave de dev
  * a partir de uma constante — NÃO use assim em produção.
  */
+let cachedKey: Buffer | null = null;
 function getKey(): Buffer {
+  if (cachedKey) return cachedKey;
+
   const hex = process.env.ENCRYPTION_KEY;
   if (hex && /^[0-9a-fA-F]{64}$/.test(hex)) {
-    return Buffer.from(hex, "hex");
+    cachedKey = Buffer.from(hex, "hex");
+    return cachedKey;
   }
   if (process.env.NODE_ENV === "production") {
     throw new Error("ENCRYPTION_KEY critical failure: Not configured or invalid in production.");
   }
   // Fallback de desenvolvimento (inseguro). Mantém o app funcional sem configurar a chave.
-  return createHash("sha256").update("automatite-dev-fallback-key").digest();
+  cachedKey = createHash("sha256").update("automatite-dev-fallback-key").digest();
+  return cachedKey;
 }
 
 export function encrypt(plain: string): string {
