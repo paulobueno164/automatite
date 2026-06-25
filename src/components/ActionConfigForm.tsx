@@ -22,7 +22,7 @@ export function ActionConfigForm({
     onChange({ ...params, [key]: value });
   }
 
-  if (fields.length === 0) return null;
+  if (fields.length === 0 && type !== "loop") return null;
 
   return (
     <div className="space-y-3">
@@ -43,6 +43,26 @@ export function ActionConfigForm({
           </div>
         );
       })}
+      {type === "loop" && (
+        <div className="mt-2 border-l-2 border-brand-200 pl-3 py-2 bg-slate-50 rounded-r">
+          <p className="text-xs font-semibold text-slate-700 mb-2">Ações internas do loop</p>
+          <p className="text-[10px] text-slate-500 italic mb-1">
+            Dica: No momento, use o Assistente de IA para montar loops complexos ou edite o JSON manualmente.
+          </p>
+          {Array.isArray(params.actions) && params.actions.length > 0 ? (
+            <ul className="space-y-1">
+              {params.actions.map((a: any, i: number) => (
+                <li key={i} className="text-xs text-slate-600 flex items-center gap-2">
+                  <span className="font-mono text-[10px] bg-slate-200 px-1 rounded">{i+1}</span>
+                  {a.label || a.type}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-400">Nenhuma ação interna</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
