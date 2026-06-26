@@ -28,12 +28,19 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
-/** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+/** Substitui placeholders {campo} numa string usando o contexto, suportando notação de ponto. */
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+    return value.replace(/\{([\w.]+)\}/g, (_, path) => {
+      const parts = path.split(".");
+      let v: any = ctx.data;
+      for (const part of parts) {
+        v = v?.[part];
+        if (v === undefined || v === null) break;
+      }
+      if (v === undefined || v === null) return `{${path}}`;
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -380,6 +387,11 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        const items = String(params.items ?? "");
+        return ok(action, label, `Iniciando repetição sobre: ${items}`, { items });
       }
 
       default:
