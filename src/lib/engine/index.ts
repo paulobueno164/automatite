@@ -22,12 +22,14 @@ export class ExecutionLimitError extends Error {
 export async function runAutomation(
   automationId: string,
   payload: Record<string, unknown>,
-  options: { isInternal?: boolean } = {}
+  options: { isInternal?: boolean; automation?: any } = {}
 ): Promise<{ executionId: string; status: string; steps: ExecutionStep[]; userId: string }> {
-  const automation = await prisma.automation.findUnique({
-    where: { id: automationId },
-    include: { user: true },
-  });
+  const automation =
+    options.automation ??
+    (await prisma.automation.findUnique({
+      where: { id: automationId },
+      include: { user: true },
+    }));
   if (!automation) throw new Error("Automação não encontrada");
   if (!automation.active) throw new Error("Automação está inativa");
 
@@ -255,7 +257,7 @@ export async function resumeAutomation(
 export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: number; ids: string[] }> {
   const due = await prisma.automation.findMany({
     where: { active: true, nextRunAt: { not: null, lte: now } },
-    select: { id: true, triggerJson: true },
+    include: { user: true },
   });
 
   const ids: string[] = [];
@@ -271,11 +273,12 @@ export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: nu
     const tz = trigger.config?.timezone ? String(trigger.config.timezone) : undefined;
 
     // Executa (ignora erros de limite/individuais para não travar o lote).
+    // Otimização Bolt: passamos o objeto 'a' (automação) já carregado com o usuário para evitar N+1 queries.
     try {
       await runAutomation(
         a.id,
         { _trigger: "schedule", _firedAt: now.toISOString() },
-        { isInternal: true }
+        { isInternal: true, automation: a }
       );
       ids.push(a.id);
     } catch {
