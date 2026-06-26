@@ -5,7 +5,7 @@ import { resolveApiKey } from "../anthropic";
 import { getTier, startOfMonth } from "../tiers";
 import { loadUserIntegrations } from "../integrations";
 import { computeNextRun } from "../schedule";
-import { runAction, EngineContext } from "./actions";
+import { runAction, EngineContext, interpolate } from "./actions";
 import { captureFormToCrm } from "../capture-form-crm";
 
 export class ExecutionLimitError extends Error {
@@ -114,7 +114,29 @@ function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
 }
 
 /**
- * Executa uma sequência de ações de forma recursiva (suporta branching).
+ * Tenta extrair uma lista de itens para o loop.
+ * Suporta array real, JSON stringificado ou string separada por vírgula.
+ */
+function getLoopItems(input: unknown): any[] {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        // cai no split por vírgula
+      }
+    }
+    if (trimmed === "") return [];
+    return trimmed.split(",").map((s) => s.trim());
+  }
+  if (input && typeof input === "object") return [input];
+  return [];
+}
+
+/**
+ * Executa uma sequência de ações de forma recursiva (suporta branching e loops).
  */
 async function runActionSequence(
   actions: Action[],
@@ -125,26 +147,56 @@ async function runActionSequence(
   const { startIndex = 0, resumePath } = options;
 
   // Se temos um resumePath, precisamos navegar até o nível correto.
-  // Formato: "index.branchKey.index.branchKey..."
+  // Formato: "index.branchKey.index.branchKey..." ou "index.iterationIndex.subIndex"
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const middlePart = parts[1];
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchKey = middlePart; // "if_true" | "if_false"
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const iterationIndex = parseInt(middlePart, 10);
+      const items = getLoopItems(interpolate(action.params?.items, ctx));
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(loopActions)) {
+        // Retoma as iterações do loop
+        for (let j = iterationIndex; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          // Se for a primeira iteração da retomada, usa o remainingPath
+          const subResult = await runActionSequence(loopActions, ctx, steps, {
+            resumePath: j === iterationIndex ? (remainingPath || undefined) : undefined,
+          });
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -167,6 +219,31 @@ async function runActionSequence(
         const subResult = await runActionSequence(branchActions, ctx, steps);
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    }
+
+    // Se for um loop, executa as ações para cada item.
+    if (action.type === "loop" && step.status === "success") {
+      const items = getLoopItems(interpolate(action.params?.items, ctx));
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(loopActions) && items.length > 0) {
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
         }
       }
     }
