@@ -17,6 +17,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 import { isSafeUrl } from "../security";
+import { prisma } from "../db";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -29,17 +30,49 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+    return value.replace(/\{([\w.]+)\}/g, (_, path) => {
+      // Suporte a caminhos aninhados (ex: loop_item.name)
+      const parts = path.split(".");
+      let v: any = ctx.data;
+      for (const part of parts) {
+        v = v?.[part];
+      }
+      return v === undefined || v === null
+        ? `{${path}}`
+        : typeof v === "object"
+        ? JSON.stringify(v)
+        : String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
   if (value && typeof value === "object") {
+    // If we're interpolating a string that is just a placeholder (e.g. "{list}")
+    // and the resolved value is an object/array, we should return that object/array directly
+    // instead of its string representation inside a template.
+    // However, this recursive call handles objects by property.
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, interpolate(v, ctx)])
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => {
+        if (typeof v === "string" && v.startsWith("{") && v.endsWith("}")) {
+          const path = v.slice(1, -1);
+          if (!path.includes(" ")) {
+            const parts = path.split(".");
+            let val: any = ctx.data;
+            let found = true;
+            for (const part of parts) {
+              if (val && typeof val === "object" && part in val) {
+                val = val[part];
+              } else {
+                found = false;
+                break;
+              }
+            }
+            if (found) return [k, val];
+          }
+        }
+        return [k, interpolate(v, ctx)];
+      })
     );
   }
   return value;
@@ -380,6 +413,74 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "storage_set": {
+        const key = String(params.key ?? "");
+        const value = typeof params.value === "object" ? JSON.stringify(params.value) : String(params.value ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+        await prisma.storage.upsert({
+          where: { userId_key: { userId: ctx.userId, key } },
+          update: { value },
+          create: { userId: ctx.userId, key, value },
+        });
+        return ok(action, label, `Informação salva em "${key}"`, { key, value });
+      }
+
+      case "storage_get": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+        const entry = await prisma.storage.findUnique({
+          where: { userId_key: { userId: ctx.userId, key } },
+        });
+        const outKey = String(params.output_key ?? key);
+        let val: any = entry?.value ?? null;
+        try {
+          if (val && (val.startsWith("{") || val.startsWith("["))) val = JSON.parse(val);
+        } catch {}
+        ctx.data[outKey] = val;
+        return ok(action, label, entry ? `Recuperado de "${key}"` : `Chave "${key}" não encontrada`, { [outKey]: val });
+      }
+
+      case "extract_data": {
+        const text = String(params.text ?? ctx.data.ai_output ?? "");
+        const schema = String(params.schema ?? "{}");
+        if (!text) return fail(action, label, "Instrução ou texto para extração ausente");
+        if (!ctx.apiKey) return fail(action, label, "Chave da Anthropic não configurada");
+
+        const client = new Anthropic({ apiKey: ctx.apiKey });
+        const resp = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-3-5-sonnet-20240620",
+          max_tokens: 1000,
+          messages: [
+            {
+              role: "user",
+              content: `Extraia dados estruturados do texto abaixo seguindo este esquema JSON: ${schema}\n\nRetorne APENAS o JSON resultante, sem explicações.\n\nTexto: ${text}`,
+            },
+          ],
+        });
+        const out = resp.content
+          .filter((b): b is Anthropic.TextBlock => b.type === "text")
+          .map((b) => b.text)
+          .join("");
+
+        try {
+          const parsed = JSON.parse(out.substring(out.indexOf("{"), out.lastIndexOf("}") + 1));
+          const outKey = String(params.output_key ?? "extracted_data");
+          ctx.data[outKey] = parsed;
+          return ok(action, label, "Dados extraídos com sucesso", { [outKey]: parsed });
+        } catch (e) {
+          return fail(action, label, `Erro ao processar JSON da IA: ${out}`);
+        }
+      }
+
+      case "loop": {
+        const items = params.items;
+        if (!items || (!Array.isArray(items) && typeof items !== "string" && typeof items !== "object")) {
+          return fail(action, label, "A lista de itens (items) deve ser um array, objeto ou string separada por vírgula");
+        }
+        const itemsCount = Array.isArray(items) ? items.length : typeof items === "object" ? 1 : String(items).split(",").length;
+        return ok(action, label, "Iniciando repetição", { items, items_count: itemsCount });
       }
 
       default:

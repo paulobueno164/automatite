@@ -175,6 +175,31 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
       { key: "subject", label: "Assunto do e-mail", type: "text", placeholder: "Aprovação necessária: {nome}" },
     ],
   },
+  storage_set: {
+    fields: [
+      { key: "key", label: "Chave (Key)", type: "text", placeholder: "ultimo_id_processado" },
+      { key: "value", label: "Valor", type: "textarea", placeholder: "{id}" },
+    ],
+  },
+  storage_get: {
+    fields: [
+      { key: "key", label: "Chave (Key)", type: "text", placeholder: "ultimo_id_processado" },
+      { key: "output_key", label: "Nome da variável", type: "text", placeholder: "last_id", optional: true, hint: "Nome para usar no fluxo (ex: {last_id}). Se vazio, usa a própria Chave." },
+    ],
+  },
+  extract_data: {
+    fields: [
+      { key: "text", label: "Texto para extração", type: "textarea", placeholder: "{ai_output}", hint: "Texto ou variável que contém os dados." },
+      { key: "schema", label: "Esquema JSON", type: "textarea", placeholder: "{\"nome\": \"string\", \"idade\": \"number\"}", hint: "Descreva os campos que você quer extrair." },
+      { key: "output_key", label: "Variável de saída", type: "text", placeholder: "dados_extraidos", optional: true },
+    ],
+    resolveProvider: () => "anthropic",
+  },
+  loop: {
+    fields: [
+      { key: "items", label: "Lista de itens", type: "textarea", placeholder: "{lista_de_produtos}", hint: "Um array JSON ou lista separada por vírgula." },
+    ],
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -197,6 +222,10 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   send_discord: { text: "" },
   transform: { instruction: "" },
   wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
+  storage_set: { key: "", value: "" },
+  storage_get: { key: "", output_key: "" },
+  extract_data: { text: "{ai_output}", schema: "{}", output_key: "extracted_data" },
+  loop: { items: "", actions: [] },
   log: { message: "" },
 };
 

@@ -32,6 +32,10 @@ export const ActionTypeEnum = z.enum([
   "send_discord", // envia mensagem para o Discord
   "transform", // transforma dados usando IA
   "wait_for_approval", // pausa a execução até aprovação manual
+  "storage_set", // salva um valor persistente no banco de dados
+  "storage_get", // recupera um valor persistente do banco de dados
+  "loop", // itera sobre uma lista de itens e executa ações para cada um
+  "extract_data", // extrai dados estruturados usando IA
   "log", // apenas registra uma mensagem
 ]);
 
@@ -81,5 +85,9 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   send_discord: { title: "Enviar Discord", description: "Envia uma mensagem para um canal via Webhook no Discord." },
   transform: { title: "Transformar (IA)", description: "Usa a IA para formatar, limpar ou extrair dados." },
   wait_for_approval: { title: "Aguardar Aprovação", description: "Pausa o fluxo até que você aprove manualmente (via e-mail ou painel)." },
+  storage_set: { title: "Salvar Memória", description: "Salva uma informação para ser usada em outras execuções ou automações." },
+  storage_get: { title: "Recuperar Memória", description: "Busca uma informação salva anteriormente para usar neste fluxo." },
+  loop: { title: "Repetir (Loop)", description: "Repete uma sequência de ações para cada item de uma lista." },
+  extract_data: { title: "Extrair Dados (IA)", description: "Usa a IA para extrair informações estruturadas (JSON) de textos ou imagens." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },
 };

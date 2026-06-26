@@ -51,6 +51,10 @@ REGRAS:
   - "send_slack": use para enviar notificações para o Slack. Params: { "channel": "#vendas", "text": "Novo lead: {nome}" }.
   - "send_discord": use para enviar notificações para o Discord via Webhook. Params: { "text": "Novo lead: {nome}", "webhookUrl": "opcional_url" }.
   - "transform": use para limpar, formatar ou extrair dados usando IA. Params: { "instruction": "Extraia apenas o primeiro nome em letras maiúsculas" }. O resultado fica em {transformed_output}.
+  - "storage_set": use para salvar uma informação persistente. Params: { "key": "nome_da_chave", "value": "valor" }.
+  - "storage_get": use para recuperar uma informação salva. Params: { "key": "nome_da_chave", "output_key": "opcional_nome_no_contexto" }.
+  - "extract_data": use para extrair JSON estruturado. Params: { "text": "texto para ler", "schema": "{\"campo\": \"tipo\"}", "output_key": "dados" }.
+  - "loop": use para repetir ações para cada item de uma lista. Params: { "items": [1,2,3] ou "{lista}", "actions": [..lista de ações..] }. Dentro das ações, use {loop_item} para o item atual.
 13. VISUALIZAÇÃO DE FLUXO: Ao criar ou explicar uma automação, SEMPRE gere um diagrama Mermaid simples no final da sua resposta para ajudar o usuário a visualizar o caminho. Use o formato:
     graph TD
       A[Gatilho] --> B[Ação 1]
