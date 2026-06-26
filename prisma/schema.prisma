@@ -27,6 +27,7 @@ model User {
   tasks        InternalTask[]
   leads        Lead[]
   apiKeys      ApiKey[]
+  storage      Storage[]
 }
 
 // Credenciais de um serviço externo conectado pelo usuário (tokens criptografados).
@@ -54,6 +55,20 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  @@index([userId])
+}
+
+// Armazenamento de estado persistente (Key-Value) para automações.
+model Storage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
   @@index([userId])
 }
 

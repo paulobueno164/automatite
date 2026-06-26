@@ -114,7 +114,17 @@ function sendApprovalNotification(token: string, steps: ExecutionStep[]) {
 }
 
 /**
- * Executa uma sequência de ações de forma recursiva (suporta branching).
+ * Helper to parse loop items from various formats.
+ */
+function getLoopItems(items: unknown): any[] {
+  if (Array.isArray(items)) return items;
+  if (typeof items === "string") return items.split(",").map((s) => s.trim());
+  if (items && typeof items === "object") return [items];
+  return [];
+}
+
+/**
+ * Executa uma sequência de ações de forma recursiva (suporta branching e loops).
  */
 async function runActionSequence(
   actions: Action[],
@@ -129,22 +139,53 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKey = parts[1]; // "if_true" | "if_false" | iteration index (string)
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    // Branching (Condition)
+    if (branchKey === "if_true" || branchKey === "if_false") {
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    }
+    // Looping
+    else if (action.type === "loop") {
+      const iterationIndex = parseInt(branchKey, 10);
+      // Re-run the loop action to get interpolated items
+      const loopStep = await runAction(action, ctx);
+      const items = getLoopItems(loopStep.output?.items);
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions)) {
+        for (let j = iterationIndex; j < items.length; j++) {
+          const prevItem = ctx.data.loop_item;
+          const prevIndex = ctx.data.loop_index;
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps, {
+            resumePath: j === iterationIndex ? remainingPath || undefined : undefined,
+          });
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+
+          ctx.data.loop_item = prevItem;
+          ctx.data.loop_index = prevIndex;
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -167,6 +208,29 @@ async function runActionSequence(
         const subResult = await runActionSequence(branchActions, ctx, steps);
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    }
+
+    // Se for um loop, executa as sub-ações para cada item.
+    if (action.type === "loop" && step.status === "success") {
+      const items = getLoopItems(step.output?.items);
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions) && subActions.length > 0) {
+        for (let j = 0; j < items.length; j++) {
+          const prevItem = ctx.data.loop_item;
+          const prevIndex = ctx.data.loop_index;
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
+
+          ctx.data.loop_item = prevItem;
+          ctx.data.loop_index = prevIndex;
         }
       }
     }
