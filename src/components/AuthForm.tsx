@@ -44,12 +44,20 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         </div>
         <form onSubmit={submit} className="space-y-3">
           <div>
-            <label className="mb-1 block text-sm font-medium">E-mail</label>
-            <input type="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <label htmlFor="auth-email" className="mb-1 block text-sm font-medium">E-mail</label>
+            <input
+              id="auth-email"
+              type="email"
+              required
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Senha</label>
+            <label htmlFor="auth-password" className="mb-1 block text-sm font-medium">Senha</label>
             <input
+              id="auth-password"
               type="password"
               required
               minLength={6}

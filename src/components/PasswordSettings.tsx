@@ -61,8 +61,9 @@ export function PasswordSettings() {
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-sm font-medium">Senha atual</label>
+          <label htmlFor="current-password" className="mb-1 block text-sm font-medium">Senha atual</label>
           <input
+            id="current-password"
             type="password"
             className="input text-sm"
             autoComplete="current-password"
@@ -71,8 +72,9 @@ export function PasswordSettings() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Nova senha</label>
+          <label htmlFor="new-password" className="mb-1 block text-sm font-medium">Nova senha</label>
           <input
+            id="new-password"
             type="password"
             className="input text-sm"
             autoComplete="new-password"
@@ -82,8 +84,9 @@ export function PasswordSettings() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">Confirmar nova senha</label>
+          <label htmlFor="confirm-password" className="mb-1 block text-sm font-medium">Confirmar nova senha</label>
           <input
+            id="confirm-password"
             type="password"
             className="input text-sm"
             autoComplete="new-password"
