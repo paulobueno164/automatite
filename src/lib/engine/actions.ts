@@ -17,6 +17,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 import { isSafeUrl } from "../security";
+import { prisma } from "../db";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -29,11 +30,20 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for EXATAMENTE um placeholder, retornamos o valor bruto (preserva objetos/arrays)
+    const match = value.match(/^\{([\w.]+)\}$/);
+    if (match) {
+      const v = ctx.data[match[1]];
+      return v !== undefined ? v : value;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
       const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      if (v === undefined || v === null) return `{${key}}`;
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -58,6 +68,22 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
     switch (action.type) {
       case "log":
         return ok(action, label, String(params.message ?? "(sem mensagem)"));
+
+      case "loop": {
+        const items = params.items;
+        const itemsArray = Array.isArray(items)
+          ? items
+          : typeof items === "string" && items.startsWith("[")
+          ? JSON.parse(items)
+          : null;
+
+        if (!Array.isArray(itemsArray)) {
+          return fail(action, label, "O campo 'items' deve ser uma lista válida.");
+        }
+        return ok(action, label, `Iniciando loop sobre ${itemsArray.length} itens`, {
+          count: itemsArray.length,
+        });
+      }
 
       case "delay": {
         const seconds = Math.min(Number(params.seconds ?? 5), 60); // Máximo 60s para evitar timeout do worker
@@ -380,6 +406,34 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "storage_set": {
+        const key = String(params.key ?? "");
+        const value = String(params.value ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+
+        await prisma.storage.upsert({
+          where: { userId_key: { userId: ctx.userId, key } },
+          update: { value },
+          create: { userId: ctx.userId, key, value },
+        });
+
+        return ok(action, label, `Chave "${key}" salva com sucesso`, { key, value });
+      }
+
+      case "storage_get": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+
+        const record = await prisma.storage.findUnique({
+          where: { userId_key: { userId: ctx.userId, key } },
+        });
+
+        const val = record?.value ?? "";
+        ctx.data[params.output_key as string || "storage_value"] = val;
+
+        return ok(action, label, `Valor recuperado para "${key}"`, { key, value: val });
       }
 
       default:

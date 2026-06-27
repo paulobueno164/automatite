@@ -175,6 +175,23 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
       { key: "subject", label: "Assunto do e-mail", type: "text", placeholder: "Aprovação necessária: {nome}" },
     ],
   },
+  storage_set: {
+    fields: [
+      { key: "key", label: "Nome da chave", type: "text", placeholder: "total_vendas" },
+      { key: "value", label: "Valor", type: "text", placeholder: "100" },
+    ],
+  },
+  storage_get: {
+    fields: [
+      { key: "key", label: "Nome da chave", type: "text", placeholder: "total_vendas" },
+      { key: "output_key", label: "Salvar em (opcional)", type: "text", placeholder: "storage_value", optional: true, hint: "Nome da variável onde o valor ficará disponível." },
+    ],
+  },
+  loop: {
+    fields: [
+      { key: "items", label: "Lista de itens (JSON ou placeholder)", type: "textarea", placeholder: "{minha_lista}" },
+    ],
+  },
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
@@ -197,6 +214,9 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   send_discord: { text: "" },
   transform: { instruction: "" },
   wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
+  storage_set: { key: "", value: "" },
+  storage_get: { key: "", output_key: "storage_value" },
+  loop: { items: "[]", actions: [] },
   log: { message: "" },
 };
 
