@@ -27,6 +27,20 @@ model User {
   tasks        InternalTask[]
   leads        Lead[]
   apiKeys      ApiKey[]
+  storage      Storage[]
+}
+
+// Armazenamento de chave-valor para persistência em automações.
+model Storage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  valueJson String
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 // Credenciais de um serviço externo conectado pelo usuário (tokens criptografados).
@@ -90,6 +104,7 @@ model Execution {
   status       String     @default("running")
   inputJson    String     @default("{}")
   logJson      String     @default("[]")
+  contextJson  String     @default("{}")
   pausedPath   String?
   resumeToken  String?    @unique
   createdAt    DateTime   @default(now())

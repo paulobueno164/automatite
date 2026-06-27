@@ -17,6 +17,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 import { isSafeUrl } from "../security";
+import { prisma } from "../db";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -29,11 +30,21 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se for exatamente uma chave inteira (ex: "{items}"), retorna o valor bruto (array/objeto/etc)
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const key = exactMatch[1];
+      const v = getNestedValue(ctx.data, key);
+      return v === undefined || v === null ? value : v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      const v = getNestedValue(ctx.data, key);
+      if (v === undefined || v === null) return `{${key}}`;
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -382,12 +393,47 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         };
       }
 
+      case "storage_set": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+        const value = params.value;
+        await prisma.storage.upsert({
+          where: { userId_key: { userId: ctx.userId, key } },
+          create: { userId: ctx.userId, key, valueJson: JSON.stringify(value) },
+          update: { valueJson: JSON.stringify(value) },
+        });
+        return ok(action, label, `Informação salva na chave "${key}"`, { key, value });
+      }
+
+      case "storage_get": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+        const entry = await prisma.storage.findUnique({
+          where: { userId_key: { userId: ctx.userId, key } },
+        });
+        const value = entry ? JSON.parse(entry.valueJson) : null;
+        ctx.data[key] = value;
+        return ok(action, label, entry ? `Recuperado da chave "${key}"` : `Chave "${key}" não encontrada (valor nulo)`, { key, value });
+      }
+
+      case "loop": {
+        // O engine (runActionSequence) é quem faz o trabalho pesado do loop.
+        // Aqui apenas validamos os itens.
+        const items = params.items;
+        const count = Array.isArray(items) ? items.length : typeof items === "string" ? items.split(",").length : 0;
+        return ok(action, label, `Iniciando loop sobre ${count} itens`, { count });
+      }
+
       default:
         return fail(action, label, `Ação desconhecida: ${action.type}`);
     }
   } catch (err) {
     return fail(action, label, err instanceof Error ? err.message : String(err));
   }
+}
+
+function getNestedValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => (acc && typeof acc === "object" ? acc[part] : undefined), obj);
 }
 
 function ok(action: Action, label: string, detail: string, output?: unknown): ExecutionStep {
