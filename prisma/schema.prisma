@@ -27,6 +27,20 @@ model User {
   tasks        InternalTask[]
   leads        Lead[]
   apiKeys      ApiKey[]
+  storage      Storage[]
+}
+
+// Armazenamento persistente de chave-valor para automações (memória de longo prazo).
+model Storage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 // Credenciais de um serviço externo conectado pelo usuário (tokens criptografados).
