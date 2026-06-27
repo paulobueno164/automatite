@@ -31,12 +31,13 @@ export const DEFAULT_EMAIL_TEMPLATE = `<!DOCTYPE html>
 export const DEFAULT_TEMPLATE_FOOTER = "Você recebeu este e-mail porque entrou em contato conosco.";
 export const DEFAULT_TEMPLATE_ACCENT = "#6366f1";
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /** Converte texto plano em parágrafos HTML. */
