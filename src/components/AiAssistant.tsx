@@ -237,13 +237,18 @@ export function AiAssistant() {
         onClick={() => setOpen(!open)}
         className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-2xl text-white shadow-lg transition hover:bg-brand-700 hover:shadow-xl"
         title="Assistente IA"
-        aria-label="Abrir assistente IA"
+        aria-label={open ? "Fechar assistente IA" : "Abrir assistente IA"}
+        aria-expanded={open}
       >
         {open ? "✕" : "💬"}
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-5 z-50 flex h-[min(520px,calc(100vh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div
+          role="dialog"
+          aria-label="Assistente de IA"
+          className="fixed bottom-24 right-5 z-50 flex h-[min(520px,calc(100vh-8rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        >
           <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-brand-600 to-indigo-600 px-4 py-3 text-white">
             <div>
               <p className="font-semibold">Assistente Automatite</p>
@@ -254,7 +259,7 @@ export function AiAssistant() {
             </button>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="flex-1 space-y-3 overflow-y-auto p-4" aria-live="polite">
             {messages.map((m, i) => (
               <div
                 key={i}
@@ -267,7 +272,7 @@ export function AiAssistant() {
             ))}
 
             {pending && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm" aria-live="polite">
                 <p className="mb-1 font-medium text-amber-900">Confirmar ação</p>
                 {pendingQueue.length > 1 && (
                   <p className="mb-2 text-xs text-amber-700">
@@ -287,7 +292,7 @@ export function AiAssistant() {
               </div>
             )}
 
-            {busy && !pending && <p className="text-xs text-slate-400 animate-pulse">Pensando…</p>}
+            {busy && !pending && <p className="text-xs text-slate-400 animate-pulse" aria-live="polite">Pensando…</p>}
             <div ref={bottomRef} />
           </div>
 
