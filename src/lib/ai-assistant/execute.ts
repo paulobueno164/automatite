@@ -589,10 +589,13 @@ export async function executeAssistantTool(
 
       case "test_automation": {
         const id = String(input.automation_id);
-        const a = await ownedAutomation(userId, id);
-        if (!a) return { ok: false, error: "Automação não encontrada" };
+        const a = await prisma.automation.findUnique({
+          where: { id },
+          include: { user: true },
+        });
+        if (!a || a.userId !== userId) return { ok: false, error: "Automação não encontrada" };
         const payload = JSON.parse(String(input.payload_json));
-        const result = await runAutomation(id, payload);
+        const result = await runAutomation(id, payload, { automation: a });
         return { ok: true, data: result };
       }
 
