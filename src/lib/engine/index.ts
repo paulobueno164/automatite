@@ -129,18 +129,47 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const subKey = parts[1]; // branchKey ou iterationIndex
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchActions = action.params?.[subKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${subKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const iterationIndex = parseInt(subKey, 10);
+      const loopActions = action.params?.actions;
+      // Re-executa para obter os itens (necessário para o contexto do loop)
+      const step = await runAction(action, ctx);
+      const items = (step.output as any)?.items;
+
+      if (Array.isArray(items) && Array.isArray(loopActions)) {
+        for (let j = iterationIndex; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps, {
+            resumePath: j === iterationIndex ? (remainingPath || undefined) : undefined,
+          });
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
       }
     }
 
@@ -167,6 +196,31 @@ async function runActionSequence(
         const subResult = await runActionSequence(branchActions, ctx, steps);
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    }
+
+    // Se for um loop e tiver ações internas
+    if (action.type === "loop" && step.status === "success") {
+      const items = (step.output as any)?.items;
+      const loopActions = action.params?.actions;
+
+      if (Array.isArray(items) && Array.isArray(loopActions)) {
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
         }
       }
     }
