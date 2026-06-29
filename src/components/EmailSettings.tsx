@@ -220,8 +220,11 @@ export function EmailSettings({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium">Servidor SMTP</label>
+          <label htmlFor="smtp-host" className="mb-1 block text-xs font-medium">
+            Servidor SMTP
+          </label>
           <input
+            id="smtp-host"
             className="input text-sm"
             placeholder="smtp.gmail.com"
             value={values.host}
@@ -230,19 +233,36 @@ export function EmailSettings({
           <p className="mt-1 text-xs text-slate-400">Preenchido automaticamente ao escolher o provedor acima</p>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Porta</label>
-          <input className="input text-sm" value={values.port} onChange={(e) => setValues({ ...values, port: e.target.value })} />
+          <label htmlFor="smtp-port" className="mb-1 block text-xs font-medium">
+            Porta
+          </label>
+          <input
+            id="smtp-port"
+            className="input text-sm"
+            value={values.port}
+            onChange={(e) => setValues({ ...values, port: e.target.value })}
+          />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">SSL</label>
-          <select className="input text-sm" value={values.secure} onChange={(e) => setValues({ ...values, secure: e.target.value })}>
+          <label htmlFor="smtp-secure" className="mb-1 block text-xs font-medium">
+            SSL
+          </label>
+          <select
+            id="smtp-secure"
+            className="input text-sm"
+            value={values.secure}
+            onChange={(e) => setValues({ ...values, secure: e.target.value })}
+          >
             <option value="false">Não — porta 587 (mais comum)</option>
             <option value="true">Sim — porta 465</option>
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Seu e-mail</label>
+          <label htmlFor="smtp-user" className="mb-1 block text-xs font-medium">
+            Seu e-mail
+          </label>
           <input
+            id="smtp-user"
             type="email"
             className="input text-sm"
             placeholder="voce@gmail.com"
@@ -251,8 +271,11 @@ export function EmailSettings({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Senha ou senha de app</label>
+          <label htmlFor="smtp-password" className="mb-1 block text-xs font-medium">
+            Senha ou senha de app
+          </label>
           <input
+            id="smtp-password"
             type="password"
             className="input text-sm"
             placeholder={isConnected ? "Deixe vazio para manter a atual" : "Cole a senha de app aqui"}
@@ -261,8 +284,11 @@ export function EmailSettings({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Remetente (aparece para quem recebe)</label>
+          <label htmlFor="smtp-fromEmail" className="mb-1 block text-xs font-medium">
+            Remetente (aparece para quem recebe)
+          </label>
           <input
+            id="smtp-fromEmail"
             type="email"
             className="input text-sm"
             placeholder="voce@gmail.com"
@@ -271,8 +297,11 @@ export function EmailSettings({
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium">Nome do remetente (opcional)</label>
+          <label htmlFor="smtp-fromName" className="mb-1 block text-xs font-medium">
+            Nome do remetente (opcional)
+          </label>
           <input
+            id="smtp-fromName"
             className="input text-sm"
             placeholder="Minha Empresa"
             value={values.fromName}

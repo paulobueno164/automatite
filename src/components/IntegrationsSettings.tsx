@@ -120,30 +120,35 @@ function ProviderCard({
 
       {isOpen && (
         <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
-          {provider.fields.map((f) => (
-            <div key={f.key}>
-              <label className="mb-1 block text-xs font-medium">
-                {f.label} {f.optional && <span className="text-slate-400">(opcional)</span>}
-              </label>
-              {f.type === "textarea" ? (
-                <textarea
-                  className="input min-h-[90px] font-mono text-xs"
-                  placeholder={f.placeholder}
-                  value={values[f.key] ?? ""}
-                  onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-                />
-              ) : (
-                <input
-                  type={f.type === "password" ? "password" : "text"}
-                  className="input text-sm"
-                  placeholder={f.placeholder}
-                  value={values[f.key] ?? ""}
-                  onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-                />
-              )}
-              {f.hint && <p className="mt-1 text-xs text-slate-400">{f.hint}</p>}
-            </div>
-          ))}
+          {provider.fields.map((f) => {
+            const inputId = `integration-${provider.id}-${f.key}`;
+            return (
+              <div key={f.key}>
+                <label htmlFor={inputId} className="mb-1 block text-xs font-medium">
+                  {f.label} {f.optional && <span className="text-slate-400">(opcional)</span>}
+                </label>
+                {f.type === "textarea" ? (
+                  <textarea
+                    id={inputId}
+                    className="input min-h-[90px] font-mono text-xs"
+                    placeholder={f.placeholder}
+                    value={values[f.key] ?? ""}
+                    onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+                  />
+                ) : (
+                  <input
+                    id={inputId}
+                    type={f.type === "password" ? "password" : "text"}
+                    className="input text-sm"
+                    placeholder={f.placeholder}
+                    value={values[f.key] ?? ""}
+                    onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+                  />
+                )}
+                {f.hint && <p className="mt-1 text-xs text-slate-400">{f.hint}</p>}
+              </div>
+            );
+          })}
           {error && <p className="text-sm text-red-600">{error}</p>}
           <div className="flex items-center justify-between">
             <button onClick={connect} disabled={busy} className="btn-primary">
