@@ -33,6 +33,9 @@ export const ActionTypeEnum = z.enum([
   "transform", // transforma dados usando IA
   "wait_for_approval", // pausa a execução até aprovação manual
   "log", // apenas registra uma mensagem
+  "loop", // itera sobre uma lista
+  "storage_set", // salva valor no KV store
+  "storage_get", // recupera valor do KV store
 ]);
 
 export const ActionSchema = z.object({
@@ -82,4 +85,7 @@ export const ACTION_CATALOG: Record<ActionType, { title: string; description: st
   transform: { title: "Transformar (IA)", description: "Usa a IA para formatar, limpar ou extrair dados." },
   wait_for_approval: { title: "Aguardar Aprovação", description: "Pausa o fluxo até que você aprove manualmente (via e-mail ou painel)." },
   log: { title: "Registrar log", description: "Apenas registra uma mensagem no histórico." },
+  loop: { title: "Repetir (Loop)", description: "Executa uma lista de ações para cada item de uma lista." },
+  storage_set: { title: "Guardar Memória", description: "Salva uma informação para usar depois ou em outras execuções." },
+  storage_get: { title: "Recuperar Memória", description: "Recupera uma informação salva anteriormente." },
 };

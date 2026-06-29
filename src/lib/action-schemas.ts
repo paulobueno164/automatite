@@ -178,6 +178,23 @@ export const ACTION_SCHEMAS: Record<ActionType, ActionSchema> = {
   log: {
     fields: [{ key: "message", label: "Mensagem", type: "text", placeholder: "Registro de debug" }],
   },
+  loop: {
+    fields: [
+      { key: "items", label: "Lista de itens", type: "text", placeholder: "{itens}", hint: "Variável que contém a lista ou texto separado por vírgula." },
+    ],
+  },
+  storage_set: {
+    fields: [
+      { key: "key", label: "Nome da chave", type: "text", placeholder: "ultimo_id" },
+      { key: "value", label: "Valor", type: "text", placeholder: "{id}" },
+    ],
+  },
+  storage_get: {
+    fields: [
+      { key: "key", label: "Nome da chave", type: "text", placeholder: "ultimo_id" },
+      { key: "output_key", label: "Salvar na variável", type: "text", placeholder: "memoria", hint: "O valor ficará disponível em {memoria}." },
+    ],
+  },
 };
 
 /** Valores padrão ao criar ou trocar o tipo de uma ação. */
@@ -198,6 +215,9 @@ export const ACTION_DEFAULTS: Record<ActionType, Record<string, unknown>> = {
   transform: { instruction: "" },
   wait_for_approval: { to: "{user_email}", subject: "Aprovação pendente" },
   log: { message: "" },
+  loop: { items: "" },
+  storage_set: { key: "", value: "" },
+  storage_get: { key: "", output_key: "memoria" },
 };
 
 export function getActionSchema(type: ActionType): ActionSchema {
