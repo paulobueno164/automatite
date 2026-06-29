@@ -28,12 +28,25 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+function getNestedValue(obj: any, path: string): any {
+  return path.split(".").reduce((o, i) => (o ? o[i] : undefined), obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for exatamente um placeholder, retorna o valor bruto (preserva arrays/objetos)
+    const match = value.match(/^\{([\w.]+)\}$/);
+    if (match) {
+      const v = getNestedValue(ctx.data, match[1]);
+      return v === undefined || v === null ? value : v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      const v = getNestedValue(ctx.data, key);
+      if (v === undefined || v === null) return `{${key}}`;
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -380,6 +393,21 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        let items = params.items;
+        if (typeof items === "string") {
+          try {
+            items = JSON.parse(items);
+          } catch {
+            items = items.split(",").map((s) => s.trim());
+          }
+        }
+        if (!Array.isArray(items)) {
+          return fail(action, label, "O campo 'items' deve ser uma lista (array) ou texto separado por vírgula");
+        }
+        return ok(action, label, `Iterando sobre ${items.length} itens`, { items });
       }
 
       default:
