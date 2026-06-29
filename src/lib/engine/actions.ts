@@ -17,6 +17,7 @@ import { buildEmailContent } from "../email-template";
 import { upsertLead, logLeadActivityByContact } from "../crm";
 import { createInternalTask, saveInternalRecord } from "../internal-store";
 import { isSafeUrl } from "../security";
+import { prisma } from "../db";
 
 export type EngineContext = {
   data: Record<string, unknown>;
@@ -28,12 +29,25 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/** Busca valor aninhado via dot-notation. */
+function getNestedValue(obj: any, path: string): any {
+  return path.split(".").reduce((acc, part) => acc?.[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se for exatamente um placeholder solo, ex "{items}", retornamos o valor puro (array/objeto)
+    const soloMatch = value.match(/^\{([\w.]+)\}$/);
+    if (soloMatch) {
+      const v = getNestedValue(ctx.data, soloMatch[1]);
+      return v !== undefined && v !== null ? v : value;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      const v = getNestedValue(ctx.data, key);
+      if (v === undefined || v === null) return `{${key}}`;
+      return typeof v === "object" ? JSON.stringify(v) : String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -380,6 +394,46 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "loop": {
+        // O engine (index.ts) trata o loop; aqui apenas resolvemos os itens
+        let items = params.items;
+        if (typeof items === "string") {
+          try {
+            items = JSON.parse(items);
+          } catch {
+            items = items.split(",").map((s) => s.trim()).filter(Boolean);
+          }
+        }
+        if (!Array.isArray(items)) {
+          // Se for um objeto único, transforma em lista de 1 item
+          items = items ? [items] : [];
+        }
+        return ok(action, label, `Iniciando loop com ${items.length} itens`, { items });
+      }
+
+      case "storage_set": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Nome da chave ausente");
+        await prisma.storage.upsert({
+          where: { userId_key: { userId: ctx.userId, key } },
+          update: { valueJson: JSON.stringify(params.value) },
+          create: { userId: ctx.userId, key, valueJson: JSON.stringify(params.value) },
+        });
+        return ok(action, label, `Chave "${key}" salva na memória`, { key, value: params.value });
+      }
+
+      case "storage_get": {
+        const key = String(params.key ?? "");
+        const outKey = String(params.output_key ?? "memoria");
+        if (!key) return fail(action, label, "Nome da chave ausente");
+        const entry = await prisma.storage.findUnique({
+          where: { userId_key: { userId: ctx.userId, key } },
+        });
+        const val = entry ? JSON.parse(entry.valueJson) : null;
+        ctx.data[outKey] = val;
+        return ok(action, label, `Recuperou "${key}" da memória`, { key, [outKey]: val });
       }
 
       default:

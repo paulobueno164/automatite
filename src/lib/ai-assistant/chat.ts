@@ -51,10 +51,14 @@ REGRAS:
   - "send_slack": use para enviar notificações para o Slack. Params: { "channel": "#vendas", "text": "Novo lead: {nome}" }.
   - "send_discord": use para enviar notificações para o Discord via Webhook. Params: { "text": "Novo lead: {nome}", "webhookUrl": "opcional_url" }.
   - "transform": use para limpar, formatar ou extrair dados usando IA. Params: { "instruction": "Extraia apenas o primeiro nome em letras maiúsculas" }. O resultado fica em {transformed_output}.
+  - "loop": use para processar listas de itens (ex: itens de um pedido). Coloque as ações repetitivas dentro de "actions" nos params. Use {loop_item} para acessar o item atual.
+  - "storage_set": use para salvar informações entre execuções (ex: "id_do_ultimo_processado"). Params: { "key": "nome", "value": "valor" }.
+  - "storage_get": use para recuperar informações salvas. Params: { "key": "nome", "output_key": "variavel" }. O valor ficará em {variavel}.
 13. VISUALIZAÇÃO DE FLUXO: Ao criar ou explicar uma automação, SEMPRE gere um diagrama Mermaid simples no final da sua resposta para ajudar o usuário a visualizar o caminho. Use o formato:
     graph TD
       A[Gatilho] --> B[Ação 1]
       B --> C[Ação 2]
+    Para loops, use subgraphs ou setas circulares. Para condições, use losangos { }.
 14. Não invente IDs internos. Seja proativo e conciso.`;
 
 type RunOpts = {

@@ -20,10 +20,13 @@ export function isSafeUrl(url: string): boolean {
       return false;
     }
 
-    // Block private IP ranges (RFC 1918) and link-local
-    // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16
-    const privateIpRegex = /^(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)/;
+    // Block private IP ranges (RFC 1918), carrier-grade NAT (RFC 6598), and link-local (RFC 3927)
+    // 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16
+    const privateIpRegex = /^(10\.|127\.|169\.254\.|100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)/;
     if (privateIpRegex.test(hostname)) return false;
+
+    // IPv6 Unicast-Local (fc00::/7) and Link-Local (fe80::/10)
+    if (hostname.startsWith("[fc") || hostname.startsWith("[fd") || hostname.startsWith("[fe8")) return false;
 
     return true;
   } catch {
