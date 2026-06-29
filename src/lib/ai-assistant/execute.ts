@@ -589,10 +589,14 @@ export async function executeAssistantTool(
 
       case "test_automation": {
         const id = String(input.automation_id);
-        const a = await ownedAutomation(userId, id);
+        // Otimização Bolt: carrega user junto para evitar query redundante no runAutomation
+        const a = await prisma.automation.findFirst({
+          where: { id, userId },
+          include: { user: true },
+        });
         if (!a) return { ok: false, error: "Automação não encontrada" };
         const payload = JSON.parse(String(input.payload_json));
-        const result = await runAutomation(id, payload);
+        const result = await runAutomation(id, payload, { automation: a });
         return { ok: true, data: result };
       }
 
