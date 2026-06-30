@@ -129,18 +129,55 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKey = parts[1]; // "if_true" | "if_false" OU index de iteração
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const iteration = parseInt(branchKey, 10);
+      const loopActions = action.params?.actions;
+      const step = await runAction(action, ctx); // Re-gera itens para continuar
+      const items = (step.output as any)?.items || [];
+
+      if (Array.isArray(loopActions)) {
+        const oldItem = ctx.data.loop_item;
+        const oldIndex = ctx.data.loop_index;
+
+        // Retoma iteração atual
+        ctx.data.loop_item = items[iteration];
+        ctx.data.loop_index = iteration;
+        const subResult = await runActionSequence(loopActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${iteration}.${subResult.pausedPath}` };
+        }
+
+        // Continua próximas iterações
+        for (let j = iteration + 1; j < items.length; j++) {
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
+
+        ctx.data.loop_item = oldItem;
+        ctx.data.loop_index = oldIndex;
+        if (oldItem === undefined) delete ctx.data.loop_item;
+        if (oldIndex === undefined) delete ctx.data.loop_index;
       }
     }
 
@@ -168,6 +205,27 @@ async function runActionSequence(
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
         }
+      }
+    }
+
+    if (action.type === "loop" && step.status === "success") {
+      const items = (step.output as any)?.items || [];
+      const loopActions = action.params?.actions;
+      if (Array.isArray(loopActions) && loopActions.length > 0) {
+        const oldItem = ctx.data.loop_item;
+        const oldIndex = ctx.data.loop_index;
+        for (let iteration = 0; iteration < items.length; iteration++) {
+          ctx.data.loop_item = items[iteration];
+          ctx.data.loop_index = iteration;
+          const subResult = await runActionSequence(loopActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${iteration}.${subResult.pausedPath}` };
+          }
+        }
+        ctx.data.loop_item = oldItem;
+        ctx.data.loop_index = oldIndex;
+        if (oldItem === undefined) delete ctx.data.loop_item;
+        if (oldIndex === undefined) delete ctx.data.loop_index;
       }
     }
   }

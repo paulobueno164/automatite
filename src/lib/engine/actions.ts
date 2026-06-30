@@ -382,6 +382,33 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         };
       }
 
+      case "loop": {
+        const itemsRaw = params.items;
+        let items: unknown[] = [];
+
+        if (Array.isArray(itemsRaw)) {
+          items = itemsRaw;
+        } else if (typeof itemsRaw === "string") {
+          try {
+            const parsed = JSON.parse(itemsRaw);
+            items = Array.isArray(parsed) ? parsed : [parsed];
+          } catch {
+            items = itemsRaw.split(",").map((s) => s.trim()).filter(Boolean);
+          }
+        } else if (itemsRaw) {
+          items = [itemsRaw];
+        }
+
+        if (items.length === 0) {
+          return ok(action, label, "Nenhum item para iterar", { items_count: 0 });
+        }
+
+        return ok(action, label, `Iterando sobre ${items.length} itens`, {
+          items,
+          items_count: items.length,
+        });
+      }
+
       default:
         return fail(action, label, `Ação desconhecida: ${action.type}`);
     }
