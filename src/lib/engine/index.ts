@@ -22,9 +22,10 @@ export class ExecutionLimitError extends Error {
 export async function runAutomation(
   automationId: string,
   payload: Record<string, unknown>,
-  options: { isInternal?: boolean } = {}
+  options: { isInternal?: boolean; automation?: any } = {}
 ): Promise<{ executionId: string; status: string; steps: ExecutionStep[]; userId: string }> {
-  const automation = await prisma.automation.findUnique({
+  // Otimização Bolt: evita query redundante se a automação (com user) já foi carregada pelo caller
+  const automation = options.automation || await prisma.automation.findUnique({
     where: { id: automationId },
     include: { user: true },
   });
@@ -253,9 +254,10 @@ export async function resumeAutomation(
  * e pelo scheduler in-process (instrumentation).
  */
 export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: number; ids: string[] }> {
+  // Otimização Bolt: Carrega o usuário junto para evitar N+1 queries dentro de runAutomation
   const due = await prisma.automation.findMany({
     where: { active: true, nextRunAt: { not: null, lte: now } },
-    select: { id: true, triggerJson: true },
+    include: { user: true },
   });
 
   const ids: string[] = [];
@@ -275,7 +277,7 @@ export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: nu
       await runAutomation(
         a.id,
         { _trigger: "schedule", _firedAt: now.toISOString() },
-        { isInternal: true }
+        { isInternal: true, automation: a }
       );
       ids.push(a.id);
     } catch {

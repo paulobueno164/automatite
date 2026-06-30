@@ -6,3 +6,7 @@
 ## 2025-05-20 - [Lazy Loading Integrations in Execution Context]
 **Learning:** Pre-loading and decrypting all user integrations (AES-256-GCM) at the start of every automation run adds significant overhead, especially for flows that only use internal or AI actions. Moving to a lazy-loading pattern in the `EngineContext` avoids unnecessary DB queries and CPU-intensive decryption.
 **Action:** Use a getter function in execution contexts to fetch external credentials only when an action requires them.
+
+## 2026-06-30 - [Execution Engine N+1 Query Optimization]
+**Learning:** The execution engine's `runAutomation` function was performing a redundant database lookup for the automation and its owner (user) on every invocation. When called in a loop (e.g., in `runDueSchedules`), this caused an N+1 query pattern.
+**Action:** Updated `runAutomation` to accept an optional pre-hydrated automation object. Callers should pre-fetch the automation with its required relations (like `user`) and pass it to the engine to minimize database round-trips.
