@@ -37,10 +37,23 @@ export function scopeFormCss(css: string): string {
   return css.replace(/:root\b/g, scope).replace(/\bhtml\b/g, scope).replace(/\bbody\b/g, scope);
 }
 
-/** Remove tags perigosas do HTML personalizado. */
+/** Remove tags e atributos perigosos (XSS) do HTML personalizado. */
 export function sanitizeFormHtml(html: string): string {
+  // 1. Remove scripts
   let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
-  out = out.replace(/<\/?(?:html|head|body)\b[^>]*>/gi, "");
+
+  // 2. Remove tags estruturais ou perigosas
+  out = out.replace(/<\/?(?:html|head|body|iframe|form|object|embed|base)\b[^>]*>/gi, "");
+
+  // 3. Remove handlers de evento (onmouseover, onerror, etc)
+  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+
+  // 4. Neutraliza URIs javascript: e data: em atributos comuns
+  out = out.replace(
+    /(href|src|action|formaction)\s*=\s*(?:"\s*(?:javascript|data):|'\s*(?:javascript|data):|(?:javascript|data):)/gi,
+    '$1="#"'
+  );
+
   return out.trim();
 }
 
