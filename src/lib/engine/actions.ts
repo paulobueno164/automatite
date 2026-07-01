@@ -28,12 +28,26 @@ export type EngineContext = {
   getIntegrations: () => Promise<Record<string, Credentials>>;
 };
 
+/** Busca valor aninhado via dot-notation (ex: "user.name") */
+function getNestedValue(obj: Record<string, unknown>, path: string): unknown {
+  return path.split(".").reduce((acc: any, part) => acc?.[part], obj);
+}
+
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for exatamente um placeholder (ex: "{itens}"), retorna o valor bruto (preserva array/obj)
+    const exactMatch = value.match(/^\{([\w.]+)\}$/);
+    if (exactMatch) {
+      const v = getNestedValue(ctx.data as Record<string, unknown>, exactMatch[1]);
+      return v !== undefined && v !== null ? v : value;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      const v = getNestedValue(ctx.data as Record<string, unknown>, key);
+      if (v === undefined || v === null) return `{${key}}`;
+      if (typeof v === "object") return JSON.stringify(v);
+      return String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -382,6 +396,14 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
         };
       }
 
+      case "loop": {
+        const items = parseLoopItems(params.items);
+        return ok(action, label, `Iniciando loop com ${items.length} itens`, {
+          count: items.length,
+          items,
+        });
+      }
+
       default:
         return fail(action, label, `Ação desconhecida: ${action.type}`);
     }
@@ -396,4 +418,22 @@ function ok(action: Action, label: string, detail: string, output?: unknown): Ex
 
 function fail(action: Action, label: string, detail: string): ExecutionStep {
   return { action: action.type, label, status: "error", detail };
+}
+
+/** Tenta converter o campo 'items' em um array. */
+function parseLoopItems(input: unknown): unknown[] {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        // fail through
+      }
+    }
+    return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  if (input && typeof input === "object") return [input];
+  return [];
 }

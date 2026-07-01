@@ -41,7 +41,7 @@ export async function runAutomation(
   const tier = getTier(automation.user.tier);
   if (tier.maxExecutionsPerMonth !== null) {
     const usedThisMonth = await prisma.execution.count({
-      where: { automation: { userId: automation.userId }, createdAt: { gte: startOfMonth() } },
+      where: { userId: automation.userId, createdAt: { gte: startOfMonth() } },
     });
     if (usedThisMonth >= tier.maxExecutionsPerMonth) {
       throw new ExecutionLimitError(
@@ -52,7 +52,12 @@ export async function runAutomation(
 
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const execution = await prisma.execution.create({
-    data: { automationId, status: "running", inputJson: JSON.stringify(payload) },
+    data: {
+      automationId,
+      userId: automation.userId,
+      status: "running",
+      inputJson: JSON.stringify(payload),
+    },
   });
 
   await captureFormToCrm({
@@ -125,26 +130,61 @@ async function runActionSequence(
   const { startIndex = 0, resumePath } = options;
 
   // Se temos um resumePath, precisamos navegar até o nível correto.
-  // Formato: "index.branchKey.index.branchKey..."
+  // Formato: "index.branchKey.index.branchKey..." ou "index.iterationIndex.index..."
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const subIdentifier = parts[1]; // branchKey ou iterationIndex
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    // Caso Loop
+    if (action.type === "loop" && !isNaN(parseInt(subIdentifier, 10))) {
+      const iterationIndex = parseInt(subIdentifier, 10);
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions)) {
+        // Precisamos re-executar a ação 'loop' para ter os itens no contexto (outputs)
+        const step = await runAction(action, ctx);
+        // Não adicionamos ao log novamente se já existe
+        const items = (step.output as any)?.items || [];
+
+        for (let j = iterationIndex; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps, {
+            resumePath: j === iterationIndex ? remainingPath || undefined : undefined,
+          });
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
+      }
+    } else {
+      // Caso Condição (branchKey)
+      const branchKey = subIdentifier;
+      const branchActions = action.params?.[branchKey];
+
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -167,6 +207,31 @@ async function runActionSequence(
         const subResult = await runActionSequence(branchActions, ctx, steps);
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    }
+
+    // Se for um loop, executa as ações internas para cada item.
+    if (action.type === "loop" && step.status === "success") {
+      const items = (step.output as any)?.items || [];
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(subActions) && subActions.length > 0) {
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
+          const oldItem = ctx.data.loop_item;
+          const oldIndex = ctx.data.loop_index;
+          ctx.data.loop_item = item;
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps);
+
+          ctx.data.loop_item = oldItem;
+          ctx.data.loop_index = oldIndex;
+
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
         }
       }
     }

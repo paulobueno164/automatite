@@ -86,6 +86,7 @@ model Execution {
   id           String     @id @default(cuid())
   automationId String
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  userId       String     @default("")
   // "success" | "error" | "running" | "waiting"
   status       String     @default("running")
   inputJson    String     @default("{}")
@@ -95,7 +96,7 @@ model Execution {
   createdAt    DateTime   @default(now())
 
   @@index([automationId])
-  @@index([createdAt])
+  @@index([userId, createdAt])
   @@index([resumeToken])
 }
 
