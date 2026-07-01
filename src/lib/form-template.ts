@@ -39,8 +39,18 @@ export function scopeFormCss(css: string): string {
 
 /** Remove tags perigosas do HTML personalizado. */
 export function sanitizeFormHtml(html: string): string {
+  // Remove scripts e tags estruturais/perigosas
   let out = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
-  out = out.replace(/<\/?(?:html|head|body)\b[^>]*>/gi, "");
+  out = out.replace(/<\/?(?:html|head|body|iframe|form|object|embed|base)\b[^>]*>/gi, "");
+
+  // Remove atributos de eventos (on*)
+  out = out.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+
+  // Neutraliza URIs perigosas (javascript:, data: em src/href)
+  out = out.replace(/(?:src|href|action)\s*=\s*(?:"\s*javascript:|'\s*javascript:|javascript:|"\s*data:|'\s*data:|data:)/gi, (match) => {
+    return match.replace(/javascript:|data:/i, "blocked:");
+  });
+
   return out.trim();
 }
 
