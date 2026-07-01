@@ -31,7 +31,7 @@ import { verifySmtpCredentials } from "../smtp-verify";
 export type ToolResult = { ok: true; data: unknown } | { ok: false; error: string };
 
 async function ownedAutomation(userId: string, id: string) {
-  return prisma.automation.findFirst({ where: { id, userId } });
+  return prisma.automation.findFirst({ where: { id, userId }, include: { user: true } });
 }
 
 export async function executeAssistantTool(
@@ -365,8 +365,7 @@ export async function executeAssistantTool(
         const a = await ownedAutomation(userId, id);
         if (!a) return { ok: false, error: "Automação não encontrada" };
         if (active && !a.active) {
-          const user = await prisma.user.findUnique({ where: { id: userId } });
-          const tier = getTier(user?.tier ?? "free");
+          const tier = getTier(a.user.tier);
           if (tier.maxActiveAutomations !== null) {
             const count = await prisma.automation.count({ where: { userId, active: true } });
             if (count >= tier.maxActiveAutomations) {
@@ -592,7 +591,7 @@ export async function executeAssistantTool(
         const a = await ownedAutomation(userId, id);
         if (!a) return { ok: false, error: "Automação não encontrada" };
         const payload = JSON.parse(String(input.payload_json));
-        const result = await runAutomation(id, payload);
+        const result = await runAutomation(id, payload, { automation: a });
         return { ok: true, data: result };
       }
 
