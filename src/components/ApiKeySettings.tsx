@@ -9,7 +9,19 @@ export function ApiKeySettings({ keys, appOrigin }: { keys: KeyRow[]; appOrigin:
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function handleCopy() {
+    if (!newKey) return;
+    try {
+      await navigator.clipboard.writeText(newKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  }
 
   async function generate() {
     setError(null);
@@ -75,7 +87,16 @@ export function ApiKeySettings({ keys, appOrigin }: { keys: KeyRow[]; appOrigin:
       {newKey && (
         <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm">
           <p className="font-medium text-green-800">Chave criada — copie agora:</p>
-          <code className="mt-1 block break-all rounded bg-white p-2 text-xs">{newKey}</code>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="block flex-1 break-all rounded bg-white p-2 text-xs">{newKey}</code>
+            <button
+              onClick={handleCopy}
+              className="btn-ghost shrink-0 px-3 py-1.5 text-xs font-semibold"
+              aria-label="Copiar nova chave API"
+            >
+              {copied ? "✓ Copiado!" : "Copiar"}
+            </button>
+          </div>
         </div>
       )}
 
