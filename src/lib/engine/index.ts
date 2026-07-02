@@ -129,22 +129,56 @@ async function runActionSequence(
   if (resumePath) {
     const parts = resumePath.split(".");
     const currentIndex = parseInt(parts[0], 10);
-    const branchKey = parts[1]; // "if_true" | "if_false"
+    const branchKeyOrIndex = parts[1]; // "if_true" | "if_false" (string) OU index do loop (number)
     const remainingPath = parts.slice(2).join(".");
 
     const action = actions[currentIndex];
-    const branchActions = action.params?.[branchKey];
 
-    if (Array.isArray(branchActions)) {
-      const subResult = await runActionSequence(branchActions, ctx, steps, {
-        resumePath: remainingPath || undefined,
-      });
-      if (subResult.paused) {
-        return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+    if (action.type === "condition") {
+      const branchKey = branchKeyOrIndex;
+      const branchActions = action.params?.[branchKey];
+      if (Array.isArray(branchActions)) {
+        const subResult = await runActionSequence(branchActions, ctx, steps, {
+          resumePath: remainingPath || undefined,
+        });
+        if (subResult.paused) {
+          return { paused: true, pausedPath: `${currentIndex}.${branchKey}.${subResult.pausedPath}` };
+        }
+      }
+    } else if (action.type === "loop") {
+      const loopIteration = parseInt(branchKeyOrIndex, 10);
+      const itemsActionStep = await runAction(action, ctx); // Re-executa para pegar os items
+      const items = (itemsActionStep.output as any)?.items;
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(items) && Array.isArray(subActions)) {
+        const prevItem = ctx.data.loop_item;
+        const prevIndex = ctx.data.loop_index;
+
+        // Retoma a partir da iteração que estava pausada
+        for (let j = loopIteration; j < items.length; j++) {
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          // Se for a iteração onde pausou, passa o remainingPath
+          const currentResumePath = j === loopIteration ? remainingPath : undefined;
+
+          const subResult = await runActionSequence(subActions, ctx, steps, {
+            resumePath: currentResumePath || undefined,
+          });
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${currentIndex}.${j}.${subResult.pausedPath}` };
+          }
+        }
+
+        ctx.data.loop_item = prevItem;
+        ctx.data.loop_index = prevIndex;
+        if (prevItem === undefined) delete ctx.data.loop_item;
+        if (prevIndex === undefined) delete ctx.data.loop_index;
       }
     }
 
-    // Após terminar o ramo que estava pausado, continua a partir da próxima ação DESTE nível.
+    // Após terminar o ramo/loop que estava pausado, continua a partir da próxima ação DESTE nível.
     return runActionSequence(actions, ctx, steps, { startIndex: currentIndex + 1 });
   }
 
@@ -168,6 +202,31 @@ async function runActionSequence(
         if (subResult.paused) {
           return { paused: true, pausedPath: `${i}.${branchKey}.${subResult.pausedPath}` };
         }
+      }
+    }
+
+    if (action.type === "loop" && step.status === "success") {
+      const items = (step.output as any)?.items;
+      const subActions = action.params?.actions;
+
+      if (Array.isArray(items) && Array.isArray(subActions)) {
+        const prevItem = ctx.data.loop_item;
+        const prevIndex = ctx.data.loop_index;
+
+        for (let j = 0; j < items.length; j++) {
+          ctx.data.loop_item = items[j];
+          ctx.data.loop_index = j;
+
+          const subResult = await runActionSequence(subActions, ctx, steps);
+          if (subResult.paused) {
+            return { paused: true, pausedPath: `${i}.${j}.${subResult.pausedPath}` };
+          }
+        }
+
+        ctx.data.loop_item = prevItem;
+        ctx.data.loop_index = prevIndex;
+        if (prevItem === undefined) delete ctx.data.loop_item;
+        if (prevIndex === undefined) delete ctx.data.loop_index;
       }
     }
   }

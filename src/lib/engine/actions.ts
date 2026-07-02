@@ -29,11 +29,18 @@ export type EngineContext = {
 };
 
 /** Substitui placeholders {campo} numa string usando o contexto. */
-function interpolate(value: unknown, ctx: EngineContext): unknown {
+export function interpolate(value: unknown, ctx: EngineContext): unknown {
   if (typeof value === "string") {
+    // Se a string for EXATAMENTE um placeholder, retorna o valor original do contexto (preserva objetos/arrays)
+    const match = value.match(/^\{([\w.]+)\}$/);
+    if (match) {
+      const v = getNestedValue(ctx.data, match[1]);
+      if (v !== undefined) return v;
+    }
+
     return value.replace(/\{([\w.]+)\}/g, (_, key) => {
-      const v = ctx.data[key];
-      return v === undefined || v === null ? `{${key}}` : String(v);
+      const v = getNestedValue(ctx.data, key);
+      return v === undefined || v === null ? `{${key}}` : typeof v === "object" ? JSON.stringify(v) : String(v);
     });
   }
   if (Array.isArray(value)) return value.map((v) => interpolate(v, ctx));
@@ -43,6 +50,30 @@ function interpolate(value: unknown, ctx: EngineContext): unknown {
     );
   }
   return value;
+}
+
+function getNestedValue(obj: any, path: string) {
+  return path.split(".").reduce((o, key) => (o && o[key] !== undefined ? o[key] : undefined), obj);
+}
+
+function parseLoopItems(input: unknown): any[] {
+  if (Array.isArray(input)) return input;
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        // segue para CSV
+      }
+    }
+    if (trimmed.includes(",")) {
+      return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+    return trimmed ? [trimmed] : [];
+  }
+  if (input && typeof input === "object") return [input];
+  return [];
 }
 
 /**
@@ -380,6 +411,43 @@ export async function runAction(action: Action, ctx: EngineContext): Promise<Exe
           detail: `Aguardando aprovação manual de ${params.to ?? "administrador"}`,
           output: { to: params.to, subject: params.subject },
         };
+      }
+
+      case "storage_set": {
+        const key = String(params.key ?? "");
+        const value = params.value;
+        if (!key) return fail(action, label, "Chave (key) ausente");
+
+        await prisma.storage.upsert({
+          where: { userId_key: { userId: ctx.userId, key } },
+          create: { userId: ctx.userId, key, value: JSON.stringify(value) },
+          update: { value: JSON.stringify(value) },
+        });
+
+        return ok(action, label, `Valor salvo na chave "${key}"`, { key, value });
+      }
+
+      case "storage_get": {
+        const key = String(params.key ?? "");
+        if (!key) return fail(action, label, "Chave (key) ausente");
+
+        const record = await prisma.storage.findUnique({
+          where: { userId_key: { userId: ctx.userId, key } },
+        });
+
+        if (!record) {
+          return ok(action, label, `Nenhum valor encontrado para a chave "${key}"`, { key, value: null });
+        }
+
+        const value = JSON.parse(record.value);
+        ctx.data[String(params.output_key || "storage_value")] = value;
+        return ok(action, label, `Valor recuperado da chave "${key}"`, { key, value });
+      }
+
+      case "loop": {
+        const rawItems = params.items;
+        const items = parseLoopItems(rawItems);
+        return ok(action, label, `Iniciando loop com ${items.length} itens`, { items_count: items.length, items });
       }
 
       default:
