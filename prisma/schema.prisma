@@ -27,6 +27,7 @@ model User {
   tasks        InternalTask[]
   leads        Lead[]
   apiKeys      ApiKey[]
+  storage      Storage[]
 }
 
 // Credenciais de um serviço externo conectado pelo usuário (tokens criptografados).
@@ -42,6 +43,20 @@ model Integration {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, provider])
+  @@index([userId])
+}
+
+// Armazenamento de estado persistente entre execuções.
+model Storage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String // JSON string
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
   @@index([userId])
 }
 
