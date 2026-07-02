@@ -22,12 +22,15 @@ export class ExecutionLimitError extends Error {
 export async function runAutomation(
   automationId: string,
   payload: Record<string, unknown>,
-  options: { isInternal?: boolean } = {}
+  options: { isInternal?: boolean; automation?: any } = {}
 ): Promise<{ executionId: string; status: string; steps: ExecutionStep[]; userId: string }> {
-  const automation = await prisma.automation.findUnique({
-    where: { id: automationId },
-    include: { user: true },
-  });
+  const automation =
+    options.automation ??
+    (await prisma.automation.findUnique({
+      where: { id: automationId },
+      include: { user: true },
+    }));
+
   if (!automation) throw new Error("Automação não encontrada");
   if (!automation.active) throw new Error("Automação está inativa");
 
@@ -40,8 +43,9 @@ export async function runAutomation(
   // Enforcement do limite de execuções do ciclo (mês) conforme o tier do dono.
   const tier = getTier(automation.user.tier);
   if (tier.maxExecutionsPerMonth !== null) {
+    // Usando o campo userId direto na Execution para evitar JOIN (otimização Bolt).
     const usedThisMonth = await prisma.execution.count({
-      where: { automation: { userId: automation.userId }, createdAt: { gte: startOfMonth() } },
+      where: { userId: automation.userId, createdAt: { gte: startOfMonth() } },
     });
     if (usedThisMonth >= tier.maxExecutionsPerMonth) {
       throw new ExecutionLimitError(
@@ -52,7 +56,12 @@ export async function runAutomation(
 
   const actions: Action[] = JSON.parse(automation.actionsJson);
   const execution = await prisma.execution.create({
-    data: { automationId, status: "running", inputJson: JSON.stringify(payload) },
+    data: {
+      automationId,
+      userId: automation.userId,
+      status: "running",
+      inputJson: JSON.stringify(payload),
+    },
   });
 
   await captureFormToCrm({
@@ -255,7 +264,7 @@ export async function resumeAutomation(
 export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: number; ids: string[] }> {
   const due = await prisma.automation.findMany({
     where: { active: true, nextRunAt: { not: null, lte: now } },
-    select: { id: true, triggerJson: true },
+    include: { user: true },
   });
 
   const ids: string[] = [];
@@ -275,7 +284,7 @@ export async function runDueSchedules(now: Date = new Date()): Promise<{ ran: nu
       await runAutomation(
         a.id,
         { _trigger: "schedule", _firedAt: now.toISOString() },
-        { isInternal: true }
+        { isInternal: true, automation: a }
       );
       ids.push(a.id);
     } catch {
